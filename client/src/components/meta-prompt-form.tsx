@@ -10,7 +10,6 @@ import {
   FormLabel,
   FormMessage,
 } from "@/components/ui/form";
-import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -18,20 +17,24 @@ import { Card } from "@/components/ui/card";
 interface MetaPromptFormProps {
   onSubmit: (data: MetaPromptInput) => void;
   isLoading?: boolean;
+  autoSubmit?: boolean;
 }
 
-export function MetaPromptForm({ onSubmit, isLoading }: MetaPromptFormProps) {
+export function MetaPromptForm({ onSubmit, isLoading, autoSubmit = true }: MetaPromptFormProps) {
   const form = useForm<MetaPromptInput>({
     resolver: zodResolver(metaPromptSchema),
     defaultValues: {
       baseInput: "",
-      aiRole: "",
-      tone: "",
-      functionality: "",
-      constraints: "",
-      edgeCases: ""
     }
   });
+
+  // Auto-submit with a default task if autoSubmit is true
+  if (autoSubmit && !form.getValues().baseInput) {
+    setTimeout(() => {
+      form.setValue("baseInput", "I want an AI that helps with general task assistance");
+      form.handleSubmit(onSubmit)();
+    }, 0);
+  }
 
   return (
     <Card className="p-6">
@@ -42,80 +45,16 @@ export function MetaPromptForm({ onSubmit, isLoading }: MetaPromptFormProps) {
             name="baseInput"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>Base Input</FormLabel>
+                <FormLabel>What kind of AI assistant do you want?</FormLabel>
                 <FormControl>
-                  <Textarea placeholder="Enter your base prompt..." {...field} />
+                  <Textarea 
+                    placeholder='Enter your request (e.g., "I want an AI that helps with writing blog posts")' 
+                    {...field} 
+                  />
                 </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-
-          <FormField
-            control={form.control}
-            name="aiRole"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>AI Role</FormLabel>
-                <FormControl>
-                  <Input placeholder="e.g., Career Coach, Writing Assistant" {...field} />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-
-          <FormField
-            control={form.control}
-            name="tone"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Tone & Style</FormLabel>
-                <FormControl>
-                  <Input placeholder="e.g., Professional, Friendly, Technical" {...field} />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-
-          <FormField
-            control={form.control}
-            name="functionality"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Functionality</FormLabel>
-                <FormControl>
-                  <Textarea placeholder="What should the AI do?" {...field} />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-
-          <FormField
-            control={form.control}
-            name="constraints"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Constraints</FormLabel>
-                <FormControl>
-                  <Textarea placeholder="What limitations should be enforced?" {...field} />
-                </FormControl>
-                <FormMessage />
-              </FormItem>
-            )}
-          />
-
-          <FormField
-            control={form.control}
-            name="edgeCases"
-            render={({ field }) => (
-              <FormItem>
-                <FormLabel>Edge Cases</FormLabel>
-                <FormControl>
-                  <Textarea placeholder="What special cases should be handled?" {...field} />
-                </FormControl>
+                <FormDescription>
+                  The system will automatically generate a detailed prompt structure based on your input.
+                </FormDescription>
                 <FormMessage />
               </FormItem>
             )}

@@ -20,13 +20,9 @@ export const insertPromptSchema = createInsertSchema(prompts).omit({
 export type InsertPrompt = z.infer<typeof insertPromptSchema>;
 export type Prompt = typeof prompts.$inferSelect;
 
+// Simplified schema that only requires the base input
 export const metaPromptSchema = z.object({
-  baseInput: z.string().min(1, "Base input is required"),
-  aiRole: z.string().min(1, "AI role is required"),
-  tone: z.string().min(1, "Tone is required"),
-  functionality: z.string().min(1, "Functionality is required"),
-  constraints: z.string().min(1, "Constraints are required"),
-  edgeCases: z.string().min(1, "Edge cases are required")
+  baseInput: z.string().min(1, "Please describe what kind of AI assistant you want")
 });
 
 export type MetaPromptInput = z.infer<typeof metaPromptSchema>;
