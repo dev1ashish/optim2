@@ -4,23 +4,29 @@ import { metaPromptSchema, type MetaPromptInput } from "@shared/schema";
 import {
   Form,
   FormControl,
-  FormDescription,
   FormField,
   FormItem,
-  FormLabel,
   FormMessage,
 } from "@/components/ui/form";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { ModelSettings, type ModelConfig } from "@/components/settings/model-settings";
+import { Label } from "@/components/ui/label";
 
 interface MetaPromptFormProps {
   onSubmit: (data: MetaPromptInput) => void;
+  modelConfig: ModelConfig;
+  onModelConfigChange: (config: ModelConfig) => void;
   isLoading?: boolean;
-  autoSubmit?: boolean;
 }
 
-export function MetaPromptForm({ onSubmit, isLoading, autoSubmit = true }: MetaPromptFormProps) {
+export function MetaPromptForm({ 
+  onSubmit, 
+  modelConfig, 
+  onModelConfigChange,
+  isLoading 
+}: MetaPromptFormProps) {
   const form = useForm<MetaPromptInput>({
     resolver: zodResolver(metaPromptSchema),
     defaultValues: {
@@ -28,40 +34,34 @@ export function MetaPromptForm({ onSubmit, isLoading, autoSubmit = true }: MetaP
     }
   });
 
-  // Auto-submit with a default task if autoSubmit is true
-  if (autoSubmit && !form.getValues().baseInput) {
-    setTimeout(() => {
-      form.setValue("baseInput", "I want an AI that helps with general task assistance");
-      form.handleSubmit(onSubmit)();
-    }, 0);
-  }
-
   return (
     <Card className="p-6">
+      <div className="flex justify-between items-center mb-4">
+        <Label className="text-lg">What kind of AI assistant do you want?</Label>
+        <ModelSettings config={modelConfig} onChange={onModelConfigChange} />
+      </div>
+
       <Form {...form}>
-        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
           <FormField
             control={form.control}
             name="baseInput"
             render={({ field }) => (
               <FormItem>
-                <FormLabel>What kind of AI assistant do you want?</FormLabel>
                 <FormControl>
                   <Textarea 
-                    placeholder='Enter your request (e.g., "I want an AI that helps with writing blog posts")' 
+                    placeholder='e.g., "I want an AI that helps with writing blog posts"'
+                    className="min-h-[100px]"
                     {...field} 
                   />
                 </FormControl>
-                <FormDescription>
-                  The system will automatically generate a detailed prompt structure based on your input.
-                </FormDescription>
                 <FormMessage />
               </FormItem>
             )}
           />
 
-          <Button type="submit" disabled={isLoading}>
-            {isLoading ? "Generating..." : "Generate Meta Prompt"}
+          <Button type="submit" className="w-full" disabled={isLoading}>
+            {isLoading ? "Generating..." : "Generate"}
           </Button>
         </form>
       </Form>

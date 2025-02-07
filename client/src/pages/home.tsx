@@ -1,5 +1,5 @@
-import { useState, useEffect } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useState } from "react";
+import { useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { generateMetaPrompt, generateVariations, evaluatePrompt, generateTestCases } from "@/lib/openai";
 import { PromptChain } from "@/components/prompt-chain";
@@ -9,6 +9,7 @@ import { TestCreator } from "@/components/test-creator";
 import { ComparisonDashboard } from "@/components/comparison-dashboard";
 import { useToast } from "@/hooks/use-toast";
 import type { MetaPromptInput, TestCase } from "@shared/schema";
+import type { ModelConfig } from "@/components/settings/model-settings";
 
 export default function Home() {
   const [currentStep, setCurrentStep] = useState(1);
@@ -16,14 +17,18 @@ export default function Home() {
   const [variations, setVariations] = useState<string[]>([]);
   const [testCases, setTestCases] = useState<TestCase[]>([]);
   const [evaluationResults, setEvaluationResults] = useState<Record<string, number>[]>([]);
-  const [autoProgress, setAutoProgress] = useState(true);
+  const [modelConfig, setModelConfig] = useState<ModelConfig>({
+    provider: "openai",
+    model: "gpt-4o",
+    temperature: 0.7,
+    maxTokens: 2048
+  });
 
   const { toast } = useToast();
-  const queryClient = useQueryClient();
 
   const metaPromptMutation = useMutation({
     mutationFn: async (input: MetaPromptInput) => {
-      const generatedPrompt = await generateMetaPrompt(input);
+      const generatedPrompt = await generateMetaPrompt(input, modelConfig);
       setMetaPrompt(generatedPrompt);
       setCurrentStep(2);
       return generatedPrompt;
@@ -32,18 +37,10 @@ export default function Home() {
 
   const variationMutation = useMutation({
     mutationFn: async (count: number) => {
-      const generatedVariations = await generateVariations(metaPrompt, count);
+      const generatedVariations = await generateVariations(metaPrompt, count, modelConfig);
       setVariations(generatedVariations);
       setCurrentStep(3);
       return generatedVariations;
-    },
-  });
-
-  const testCasesMutation = useMutation({
-    mutationFn: async (baseInput: string) => {
-      const generatedTests = await generateTestCases(baseInput);
-      setTestCases(generatedTests);
-      return generatedTests;
     },
   });
 
@@ -53,7 +50,7 @@ export default function Home() {
         variations.map(async (variation) => {
           const scores = await Promise.all(
             testCases.map(async (test) => {
-              return evaluatePrompt(variation, test.input, test.criteria);
+              return evaluatePrompt(variation, test.input, test.criteria, modelConfig);
             })
           );
 
@@ -69,7 +66,6 @@ export default function Home() {
       setEvaluationResults(results);
       setCurrentStep(4);
 
-      // Save to backend
       await apiRequest("POST", "/api/prompts", {
         baseInput: metaPrompt,
         metaPrompt: metaPrompt,
@@ -82,29 +78,6 @@ export default function Home() {
     }
   });
 
-  // Auto-progress through steps
-  useEffect(() => {
-    if (!autoProgress) return;
-
-    const progressWorkflow = async () => {
-      try {
-        if (currentStep === 2 && metaPrompt) {
-          await variationMutation.mutateAsync(3);
-        } else if (currentStep === 3 && variations.length > 0) {
-          if (testCases.length === 0) {
-            await testCasesMutation.mutateAsync(metaPrompt);
-          }
-          await evaluationMutation.mutateAsync();
-        }
-      } catch (error) {
-        console.error("Auto-progress error:", error);
-        setAutoProgress(false);
-      }
-    };
-
-    progressWorkflow();
-  }, [currentStep, metaPrompt, variations.length, autoProgress]);
-
   const handleMetaPromptSubmit = async (data: MetaPromptInput) => {
     try {
       await metaPromptMutation.mutateAsync(data);
@@ -114,20 +87,6 @@ export default function Home() {
         description: "Failed to generate meta prompt",
         variant: "destructive"
       });
-      setAutoProgress(false);
-    }
-  };
-
-  const handleGenerateVariations = async (count: number) => {
-    try {
-      await variationMutation.mutateAsync(count);
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: "Failed to generate variations",
-        variant: "destructive"
-      });
-      setAutoProgress(false);
     }
   };
 
@@ -144,47 +103,34 @@ export default function Home() {
       <PromptChain currentStep={currentStep} />
 
       <div className="space-y-8">
-        {currentStep === 1 && (
-          <div>
-            <h2 className="text-2xl font-semibold mb-4">Meta Prompt Generator</h2>
-            <MetaPromptForm 
-              onSubmit={handleMetaPromptSubmit}
-              isLoading={metaPromptMutation.isPending}
-              autoSubmit={autoProgress}
-            />
-          </div>
+        <MetaPromptForm 
+          onSubmit={handleMetaPromptSubmit}
+          modelConfig={modelConfig}
+          onModelConfigChange={setModelConfig}
+          isLoading={metaPromptMutation.isPending}
+        />
+
+        {metaPrompt && (
+          <VariationGenerator
+            metaPrompt={metaPrompt}
+            onGenerate={(count) => variationMutation.mutateAsync(count)}
+            variations={variations}
+            isLoading={variationMutation.isPending}
+          />
         )}
 
-        {currentStep >= 2 && (
-          <div>
-            <h2 className="text-2xl font-semibold mb-4">Generated Meta Prompt</h2>
-            <VariationGenerator
-              metaPrompt={metaPrompt}
-              onGenerate={handleGenerateVariations}
-              variations={variations}
-              isLoading={variationMutation.isPending}
-            />
-          </div>
+        {variations.length > 0 && (
+          <TestCreator
+            onAddTest={(test) => setTestCases([...testCases, test])}
+            testCases={testCases}
+          />
         )}
 
-        {currentStep >= 3 && (
-          <div>
-            <h2 className="text-2xl font-semibold mb-4">Test Cases</h2>
-            <TestCreator
-              onAddTest={handleAddTest}
-              testCases={testCases}
-            />
-          </div>
-        )}
-
-        {currentStep >= 4 && evaluationResults.length > 0 && (
-          <div>
-            <h2 className="text-2xl font-semibold mb-4">Comparison & Evaluation</h2>
-            <ComparisonDashboard
-              variations={variations}
-              evaluationResults={evaluationResults}
-            />
-          </div>
+        {evaluationResults.length > 0 && (
+          <ComparisonDashboard
+            variations={variations}
+            evaluationResults={evaluationResults}
+          />
         )}
       </div>
     </div>
