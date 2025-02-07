@@ -18,7 +18,6 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Textarea } from "@/components/ui/textarea";
 import { useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -28,7 +27,6 @@ export interface ModelConfig {
   temperature: number;
   maxTokens: number;
   apiKey?: string;
-  systemPrompt?: string;
 }
 
 interface ModelSettingsSectionProps {
@@ -39,50 +37,46 @@ interface ModelSettingsSectionProps {
   defaultConfig?: ModelConfig;
   useDefaultSettings?: boolean;
   onUseDefaultSettingsChange?: (use: boolean) => void;
-  defaultSystemPrompt?: string;
 }
 
 const MODEL_OPTIONS = {
   openai: ["gpt-4o", "gpt-4", "gpt-3.5-turbo"],
-  anthropic: ["claude-3-opus-20240229", "claude-3-5-sonnet-20241022", "claude-3-5-haiku-20241022"],
+  anthropic: ["claude-3-opus", "claude-3-sonnet", "claude-3-haiku"],
   groq: ["mixtral-8x7b", "llama2-70b"]
 };
 
-export function ModelSettingsSection({
+export function ModelSettingsSection({ 
   title,
   description,
   config,
   onChange,
   defaultConfig,
   useDefaultSettings,
-  onUseDefaultSettingsChange,
-  defaultSystemPrompt = "",
+  onUseDefaultSettingsChange
 }: ModelSettingsSectionProps) {
   const [open, setOpen] = useState(false);
   const [apiKey, setApiKey] = useState(config.apiKey || "");
-  const [systemPrompt, setSystemPrompt] = useState(config.systemPrompt || defaultSystemPrompt);
   const { toast } = useToast();
 
   useEffect(() => {
     setApiKey(config.apiKey || "");
-    setSystemPrompt(config.systemPrompt || defaultSystemPrompt);
-  }, [config.apiKey, config.systemPrompt, defaultSystemPrompt]);
+  }, [config.apiKey]);
 
   const handleSave = () => {
     if (!useDefaultSettings && !apiKey) {
       toast({
         title: "API Key Required",
         description: "Please enter your API key to continue",
-        variant: "destructive",
+        variant: "destructive"
       });
       return;
     }
 
-    onChange({ ...config, apiKey, systemPrompt });
+    onChange({ ...config, apiKey });
     setOpen(false);
     toast({
       title: "Settings Saved",
-      description: "Your model settings have been updated.",
+      description: "Your model settings have been updated."
     });
   };
 
@@ -127,11 +121,7 @@ export function ModelSettingsSection({
                 <Select
                   value={config.provider}
                   onValueChange={(value: ModelConfig["provider"]) =>
-                    onChange({
-                      ...config,
-                      provider: value,
-                      model: MODEL_OPTIONS[value][0],
-                    })
+                    onChange({ ...config, provider: value, model: MODEL_OPTIONS[value][0] })
                   }
                 >
                   <SelectTrigger>
@@ -167,16 +157,6 @@ export function ModelSettingsSection({
               </div>
 
               <div className="grid gap-2">
-                <Label>System Prompt</Label>
-                <Textarea
-                  value={systemPrompt}
-                  onChange={(e) => setSystemPrompt(e.target.value)}
-                  placeholder="Enter a custom system prompt..."
-                  className="h-32"
-                />
-              </div>
-
-              <div className="grid gap-2">
                 <Label>Temperature: {config.temperature}</Label>
                 <Slider
                   value={[config.temperature]}
@@ -204,9 +184,7 @@ export function ModelSettingsSection({
             </>
           )}
 
-          <Button onClick={handleSave} className="mt-4">
-            Save Settings
-          </Button>
+          <Button onClick={handleSave} className="mt-4">Save Settings</Button>
         </div>
       </DialogContent>
     </Dialog>
