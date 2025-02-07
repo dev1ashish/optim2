@@ -5,7 +5,6 @@ import { generateMetaPrompt, generateVariations, evaluatePrompt, generateTestCas
 import { PromptChain } from "@/components/prompt-chain";
 import { MetaPromptForm } from "@/components/meta-prompt-form";
 import { VariationGenerator } from "@/components/variation-generator";
-import { TestCreator } from "@/components/test-creator";
 import { ComparisonDashboard } from "@/components/comparison-dashboard";
 import { useToast } from "@/hooks/use-toast";
 import type { MetaPromptInput, TestCase } from "@shared/schema";
@@ -13,6 +12,7 @@ import type { ModelConfig } from "@/components/settings/model-settings";
 
 export default function Home() {
   const [currentStep, setCurrentStep] = useState(1);
+  const [baseInput, setBaseInput] = useState("");
   const [metaPrompt, setMetaPrompt] = useState("");
   const [variations, setVariations] = useState<string[]>([]);
   const [testCases, setTestCases] = useState<TestCase[]>([]);
@@ -28,6 +28,7 @@ export default function Home() {
 
   const metaPromptMutation = useMutation({
     mutationFn: async (input: MetaPromptInput) => {
+      setBaseInput(input.baseInput);
       const generatedPrompt = await generateMetaPrompt(input, modelConfig);
       setMetaPrompt(generatedPrompt);
       setCurrentStep(2);
@@ -39,7 +40,14 @@ export default function Home() {
     mutationFn: async (count: number) => {
       const generatedVariations = await generateVariations(metaPrompt, count, modelConfig);
       setVariations(generatedVariations);
-      setCurrentStep(3);
+
+      // Automatically generate test cases after variations
+      if (generatedVariations.length > 0) {
+        const generatedTests = await generateTestCases(baseInput, metaPrompt, generatedVariations, modelConfig);
+        setTestCases(generatedTests);
+        setCurrentStep(3);
+      }
+
       return generatedVariations;
     },
   });
@@ -67,7 +75,7 @@ export default function Home() {
       setCurrentStep(4);
 
       await apiRequest("POST", "/api/prompts", {
-        baseInput: metaPrompt,
+        baseInput: baseInput,
         metaPrompt: metaPrompt,
         variations: variations,
         testCases: testCases,
@@ -88,10 +96,6 @@ export default function Home() {
         variant: "destructive"
       });
     }
-  };
-
-  const handleAddTest = (test: TestCase) => {
-    setTestCases([...testCases, test]);
   };
 
   return (
@@ -116,13 +120,6 @@ export default function Home() {
             onGenerate={(count) => variationMutation.mutateAsync(count)}
             variations={variations}
             isLoading={variationMutation.isPending}
-          />
-        )}
-
-        {variations.length > 0 && (
-          <TestCreator
-            onAddTest={(test) => setTestCases([...testCases, test])}
-            testCases={testCases}
           />
         )}
 

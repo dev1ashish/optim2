@@ -129,32 +129,56 @@ Rate each criterion from 0 to 1 and return as JSON.`;
 
 export async function generateTestCases(
   baseInput: string,
-  count: number = 3,
+  metaPrompt: string,
+  variations: string[],
   config: ModelConfig
 ): Promise<{
   input: string;
   criteria: Record<string, number>;
 }[]> {
-  const prompt = `Generate ${count} test cases for an AI assistant that ${baseInput}.
-Each test case should include:
-1. A user input scenario
-2. Evaluation criteria with weights (0-1) for:
-   - Relevance
-   - Clarity
-   - Completeness
-   - Task-specific accuracy
+  const prompt = `Given this context:
+Base Input: "${baseInput}"
+Meta Prompt: "${metaPrompt}"
+Generated Variations:
+${variations.map((v, i) => `${i + 1}. ${v}`).join('\n')}
 
-Return as a JSON array of objects with 'input' and 'criteria' properties.`;
+Generate a set of test cases that will effectively evaluate these prompt variations.
+For each test case:
+1. Create a challenging input scenario
+2. Define evaluation criteria with weights (0-1) based on what's important for this specific use case
+
+Return ONLY a JSON object with this structure:
+{
+  "testCases": [
+    {
+      "input": "test scenario here",
+      "criteria": {
+        "criterionName": 0.8,
+        "anotherCriterion": 0.6
+      }
+    }
+  ]
+}`;
 
   const client = getClient(config);
-  const response = await client.chat.completions.create({
-    model: config.model,
-    messages: [{ role: "user", content: prompt }],
-    temperature: config.temperature,
-    max_tokens: config.maxTokens,
-    response_format: { type: "json_object" }
-  });
+  try {
+    const response = await client.chat.completions.create({
+      model: config.model,
+      messages: [{ role: "user", content: prompt }],
+      temperature: config.temperature,
+      max_tokens: config.maxTokens,
+      response_format: { type: "json_object" }
+    });
 
-  const result = JSON.parse(response.choices[0].message.content || "{}");
-  return result.testCases || [];
+    const content = response.choices[0].message.content;
+    if (!content) {
+      return [];
+    }
+
+    const result = JSON.parse(content);
+    return result.testCases || [];
+  } catch (error) {
+    console.error("Test Case Generation Error:", error);
+    return [];
+  }
 }
