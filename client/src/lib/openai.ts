@@ -70,14 +70,15 @@ For each variation:
 3. Each variation should be comprehensive and self-contained
 4. Aim for at least 250 words per variation
 
-Return ONLY a JSON object with the following structure:
+Return ONLY a JSON object with this exact structure:
 {
   "variations": [
-    "variation1",
-    "variation2",
-    "variation3"
+    "First complete variation text here",
+    "Second complete variation text here",
+    "Third complete variation text here"
   ]
-}`;
+}
+Important: Each item in the variations array must be a complete string, not an object.`;
 
   const client = getClient(config);
   try {
@@ -96,8 +97,12 @@ Return ONLY a JSON object with the following structure:
     }
 
     try {
-      const result = JSON.parse(content);
-      return Array.isArray(result.variations) ? result.variations : [];
+      const result = JSON.parse(response.choices[0].message.content);
+      if (!Array.isArray(result.variations)) {
+        console.error("Invalid response format - variations is not an array");
+        return [];
+      }
+      return result.variations.map(v => typeof v === 'string' ? v : JSON.stringify(v));
     } catch (error) {
       console.error("JSON Parse Error:", error);
       return [];

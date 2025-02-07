@@ -73,11 +73,11 @@ export function ComparisonDashboard({
           {variations.map((variation, index) => (
             <TableRow key={index}>
               <TableCell>Variation {index + 1}</TableCell>
-              {Object.entries(evaluationResults[index]).map(([key, value]) => (
+              {Object.entries(evaluationResults[index] || {}).map(([key, value]) => (
                 <TableCell key={key}>{value.toFixed(2)}</TableCell>
               ))}
               <TableCell>
-                {getAverageScore(evaluationResults[index]).toFixed(2)}
+                {evaluationResults[index] ? getAverageScore(evaluationResults[index]).toFixed(2) : 'N/A'}
               </TableCell>
             </TableRow>
           ))}
@@ -89,7 +89,7 @@ export function ComparisonDashboard({
         {variations.map((variation, index) => (
           <div key={index} className="p-4 border rounded">
             <h4 className="font-medium mb-2">Variation {index + 1}</h4>
-            <p className="text-sm">{variation}</p>
+            <pre className="whitespace-pre-wrap text-sm">{typeof variation === 'string' ? variation : JSON.stringify(variation, null, 2)}</pre>
           </div>
         ))}
       </div>
