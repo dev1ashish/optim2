@@ -1,30 +1,33 @@
 import OpenAI from "openai";
-import Anthropic from '@anthropic-ai/sdk';
+import Anthropic from "@anthropic-ai/sdk";
 import { type MetaPromptInput } from "@shared/schema";
 import type { ModelConfig } from "@/components/settings/model-settings-section";
 
 // Helper function to get the right client based on provider
 function getClient(config: ModelConfig) {
   if (!config.apiKey) {
-    throw new Error("API key is required. Please set it in the model settings.");
+    throw new Error(
+      "API key is required. Please set it in the model settings.",
+    );
   }
 
   switch (config.provider) {
     case "openai":
       return new OpenAI({
         apiKey: config.apiKey,
-        dangerouslyAllowBrowser: true
+        dangerouslyAllowBrowser: true,
       });
     case "anthropic":
       return new Anthropic({
         apiKey: config.apiKey,
+        dangerouslyAllowBrowser: true,
       });
     case "groq":
       // Groq uses OpenAI's API format
       return new OpenAI({
         apiKey: config.apiKey,
         baseURL: "https://api.groq.com/v1",
-        dangerouslyAllowBrowser: true
+        dangerouslyAllowBrowser: true,
       });
     default:
       throw new Error(`Unsupported provider: ${config.provider}`);
@@ -33,23 +36,29 @@ function getClient(config: ModelConfig) {
 
 // Helper function to format messages based on provider
 function formatMessages(prompt: string, config: ModelConfig) {
-  switch (config.provider) {
-    case "anthropic":
-      return [{
-        role: "user",
-        content: prompt
-      }];
-    default:
-      return [{
-        role: "user",
-        content: prompt
-      }];
+  const messages = [];
+
+  if (config.systemPrompt) {
+    messages.push({
+      role: config.provider === "anthropic" ? "assistant" : "system",
+      content: config.systemPrompt
+    });
   }
+
+  messages.push({
+    role: "user",
+    content: prompt
+  });
+
+  return messages;
 }
 
 // Handler for API errors
 function handleApiError(error: any) {
-  if (error.error?.type === "tokens" || error.error?.code === "rate_limit_exceeded") {
+  if (
+    error.error?.type === "tokens" ||
+    error.error?.code === "rate_limit_exceeded"
+  ) {
     throw new Error(`Rate limit exceeded. Please wait a moment and try again.`);
   }
   throw error;
@@ -58,7 +67,7 @@ function handleApiError(error: any) {
 // the newest OpenAI model is "gpt-4o" which was released May 13, 2024. do not change this unless explicitly requested by the user
 export async function generateMetaPrompt(
   input: MetaPromptInput,
-  config: ModelConfig
+  config: ModelConfig,
 ): Promise<string> {
   const prompt = `Given this request for an AI assistant: "${input.baseInput}"
 
@@ -93,7 +102,7 @@ Format the response as a detailed prompt with clear sections for:
         model: config.model,
         messages,
         temperature: config.temperature,
-        max_tokens: config.maxTokens
+        max_tokens: config.maxTokens,
       });
       return response.choices[0].message.content || "";
     }
@@ -105,7 +114,7 @@ Format the response as a detailed prompt with clear sections for:
 export async function generateVariations(
   metaPrompt: string,
   count: number = 3,
-  config: ModelConfig
+  config: ModelConfig,
 ): Promise<string[]> {
   const prompt = `Generate ${count} detailed variations of the following meta prompt:
 
@@ -150,7 +159,7 @@ Important: Each item in the variations array must be a complete string, not an o
         messages: formatMessages(prompt, config),
         temperature: config.temperature,
         max_tokens: Math.max(config.maxTokens, 2048),
-        response_format: { type: "json_object" }
+        response_format: { type: "json_object" },
       });
       content = response.choices[0].message.content || "";
     }
@@ -161,7 +170,9 @@ Important: Each item in the variations array must be a complete string, not an o
         console.error("Invalid response format - variations is not an array");
         return [];
       }
-      return result.variations.map(v => typeof v === 'string' ? v : JSON.stringify(v));
+      return result.variations.map((v) =>
+        typeof v === "string" ? v : JSON.stringify(v),
+      );
     } catch (error) {
       console.error("JSON Parse Error:", error);
       return [];
@@ -176,7 +187,7 @@ export async function evaluatePrompt(
   prompt: string,
   testCase: string,
   criteria: Record<string, number>,
-  config: ModelConfig
+  config: ModelConfig,
 ): Promise<Record<string, number>> {
   const evaluationPrompt = `Evaluate the following prompt against the test case using the given criteria:
 
@@ -209,7 +220,7 @@ Rate each criterion from 0 to 1 and return as JSON.`;
         messages: formatMessages(evaluationPrompt, config),
         temperature: config.temperature,
         max_tokens: config.maxTokens,
-        response_format: { type: "json_object" }
+        response_format: { type: "json_object" },
       });
       content = response.choices[0].message.content || "";
     }
@@ -225,16 +236,18 @@ export async function generateTestCases(
   baseInput: string,
   metaPrompt: string,
   variations: string[],
-  config: ModelConfig
-): Promise<{
-  input: string;
-  criteria: Record<string, number>;
-}[]> {
+  config: ModelConfig,
+): Promise<
+  {
+    input: string;
+    criteria: Record<string, number>;
+  }[]
+> {
   const prompt = `Given this context:
 Base Input: "${baseInput}"
 Meta Prompt: "${metaPrompt}"
 Generated Variations:
-${variations.map((v, i) => `${i + 1}. ${v}`).join('\n')}
+${variations.map((v, i) => `${i + 1}. ${v}`).join("\n")}
 
 Generate a set of test cases that will effectively evaluate these prompt variations.
 For each test case:
@@ -272,7 +285,7 @@ Return ONLY a JSON object with this structure:
         messages: formatMessages(prompt, config),
         temperature: config.temperature,
         max_tokens: config.maxTokens,
-        response_format: { type: "json_object" }
+        response_format: { type: "json_object" },
       });
       content = response.choices[0].message.content || "";
     }

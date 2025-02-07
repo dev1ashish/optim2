@@ -9,14 +9,22 @@ import { ComparisonDashboard } from "@/components/comparison-dashboard";
 import { useToast } from "@/hooks/use-toast";
 import type { MetaPromptInput, TestCase } from "@shared/schema";
 import type { ModelConfig } from "@/components/settings/model-settings-section";
+import { TestCasesDisplay } from "@/components/test-cases-display"; // Assuming this component exists
 
 const defaultModelConfig: ModelConfig = {
   provider: "openai",
   model: "gpt-4o",
   temperature: 0.7,
   maxTokens: 2048,
-  apiKey: ""
+  apiKey: "",
+  systemPrompt: "" // Add default empty system prompt
 };
+
+const defaultMetaPromptSystemPrompt = `You are an expert prompt engineer. Your task is to create comprehensive and effective meta-prompts that define AI assistant behaviors. Focus on clarity, specificity, and alignment with the user's requirements.`;
+
+const defaultVariationSystemPrompt = `You are a creative prompt designer. Your task is to generate diverse but focused variations of a meta-prompt while maintaining its core functionality and objectives.`;
+
+const defaultEvaluationSystemPrompt = `You are an evaluation expert. Your task is to assess prompt variations objectively based on given criteria. Provide numerical scores and maintain consistency in your evaluations.`;
 
 export default function Home() {
   const [currentStep, setCurrentStep] = useState(1);
@@ -26,18 +34,27 @@ export default function Home() {
   const [testCases, setTestCases] = useState<TestCase[]>([]);
   const [evaluationResults, setEvaluationResults] = useState<Record<string, number>[]>([]);
 
-  // Model configs for each section
-  const [metaPromptConfig, setMetaPromptConfig] = useState<ModelConfig>(defaultModelConfig);
-  const [variationConfig, setVariationConfig] = useState<ModelConfig>(defaultModelConfig);
-  const [evaluationConfig, setEvaluationConfig] = useState<ModelConfig>(defaultModelConfig);
+  // Update model configs with system prompts
+  const [metaPromptConfig, setMetaPromptConfig] = useState<ModelConfig>({
+    ...defaultModelConfig,
+    systemPrompt: defaultMetaPromptSystemPrompt
+  });
 
-  // Settings usage flags
+  const [variationConfig, setVariationConfig] = useState<ModelConfig>({
+    ...defaultModelConfig,
+    systemPrompt: defaultVariationSystemPrompt
+  });
+
+  const [evaluationConfig, setEvaluationConfig] = useState<ModelConfig>({
+    ...defaultModelConfig,
+    systemPrompt: defaultEvaluationSystemPrompt
+  });
+
   const [useDefaultForVariation, setUseDefaultForVariation] = useState(true);
   const [useDefaultForEvaluation, setUseDefaultForEvaluation] = useState(true);
 
   const { toast } = useToast();
 
-  // Check for API key before operations
   const checkApiKey = (config: ModelConfig) => {
     if (!config.apiKey) {
       toast({
@@ -67,10 +84,7 @@ export default function Home() {
       if (!checkApiKey(config)) return;
 
       try {
-        // Clear previous results
         setEvaluationResults([]);
-
-        // Generate variations
         const generatedVariations = await generateVariations(metaPrompt, count, config);
         if (!generatedVariations.length) {
           throw new Error("Failed to generate variations");
@@ -78,7 +92,6 @@ export default function Home() {
         setVariations(generatedVariations);
         setCurrentStep(2);
 
-        // Generate test cases
         const generatedTests = await generateTestCases(
           baseInput,
           metaPrompt,
@@ -91,7 +104,6 @@ export default function Home() {
         setTestCases(generatedTests);
         setCurrentStep(3);
 
-        // Run evaluations with potentially different config
         const evalConfig = useDefaultForEvaluation ? metaPromptConfig : evaluationConfig;
         const results = await Promise.all(
           generatedVariations.map(async (variation) => {
@@ -101,7 +113,6 @@ export default function Home() {
               })
             );
 
-            // Average the scores across all test cases
             const averagedScores: Record<string, number> = {};
             Object.keys(scores[0] || {}).forEach((criterion) => {
               averagedScores[criterion] =
@@ -115,7 +126,6 @@ export default function Home() {
         setEvaluationResults(results);
         setCurrentStep(4);
 
-        // Save results
         await apiRequest("POST", "/api/prompts", {
           baseInput,
           metaPrompt,
@@ -177,6 +187,10 @@ export default function Home() {
             useDefaultSettings={useDefaultForVariation}
             onUseDefaultSettingsChange={setUseDefaultForVariation}
           />
+        )}
+
+        {testCases.length > 0 && (
+          <TestCasesDisplay testCases={testCases} />
         )}
 
         {evaluationResults.length > 0 && (
