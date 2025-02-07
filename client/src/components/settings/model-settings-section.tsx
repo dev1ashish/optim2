@@ -43,7 +43,7 @@ interface ModelSettingsSectionProps {
 
 const MODEL_OPTIONS = {
   openai: ["gpt-4o", "gpt-4", "gpt-3.5-turbo"],
-  anthropic: ["claude-3-opus", "claude-3-sonnet", "claude-3-haiku"],
+  anthropic: ["claude-3-opus-20240229", "claude-3-5-sonnet-20241022", "claude-3-5-haiku-20241022"],
   groq: ["mixtral-8x7b", "llama2-70b"]
 };
 

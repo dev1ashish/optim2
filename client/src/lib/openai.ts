@@ -18,6 +18,7 @@ function getClient(config: ModelConfig) {
     case "anthropic":
       return new Anthropic({
         apiKey: config.apiKey,
+        dangerouslyAllowBrowser: true
       });
     case "groq":
       // Groq uses OpenAI's API format
@@ -117,7 +118,7 @@ export async function generateVariations(
   count: number = 3,
   config: ModelConfig
 ): Promise<string[]> {
-  const prompt = `Generate ${count} detailed variations of the following meta prompt:
+  const prompt = `Generate exactly ${count} detailed variations of the following meta prompt:
 
 ${metaPrompt}
 
@@ -132,15 +133,15 @@ For each variation:
 3. Each variation should be comprehensive and self-contained
 4. Aim for at least 250 words per variation
 
-Return ONLY a JSON object with this exact structure:
+Return ONLY a JSON object with this exact structure, containing exactly ${count} variations:
 {
   "variations": [
     "First complete variation text here",
     "Second complete variation text here",
-    "Third complete variation text here"
+    
   ]
 }
-Important: Each item in the variations array must be a complete string, not an object.`;
+Important: The response must contain exactly ${count} variations, no more and no less.`;
 
   const client = getClient(config);
   try {
@@ -150,7 +151,7 @@ Important: Each item in the variations array must be a complete string, not an o
       const response = await (client as Anthropic).messages.create({
         model: config.model,
         messages: formatMessages(prompt, config),
-        max_tokens: Math.max(config.maxTokens, 2048),
+        max_tokens: Math.max(config.maxTokens, 4096), // Increased for larger responses
         temperature: config.temperature,
       });
       content = response.content[0].text;
@@ -159,7 +160,7 @@ Important: Each item in the variations array must be a complete string, not an o
         model: config.model,
         messages: formatMessages(prompt, config),
         temperature: config.temperature,
-        max_tokens: Math.max(config.maxTokens, 2048),
+        max_tokens: Math.max(config.maxTokens, 4096), // Increased for larger responses
         response_format: { type: "json_object" }
       });
       content = response.choices[0].message.content || "";
@@ -171,7 +172,15 @@ Important: Each item in the variations array must be a complete string, not an o
         console.error("Invalid response format - variations is not an array");
         return [];
       }
-      return result.variations.map(v => typeof v === 'string' ? v : JSON.stringify(v));
+
+      // Ensure we have exactly the requested number of variations
+      if (result.variations.length !== count) {
+        console.warn(`Expected ${count} variations but received ${result.variations.length}`);
+      }
+
+      return result.variations
+        .slice(0, count) // Limit to requested count
+        .map(v => typeof v === 'string' ? v : JSON.stringify(v));
     } catch (error) {
       console.error("JSON Parse Error:", error);
       return [];
@@ -262,7 +271,8 @@ Return ONLY a JSON object with this structure:
       }
     }
   ]
-}`;
+}
+`;
 
   const client = getClient(config);
   try {
