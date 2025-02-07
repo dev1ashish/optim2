@@ -11,7 +11,7 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { ModelSettings, type ModelConfig } from "@/components/settings/model-settings";
+import { ModelSettingsSection, type ModelConfig } from "@/components/settings/model-settings-section";
 import { Label } from "@/components/ui/label";
 
 interface MetaPromptFormProps {
@@ -38,7 +38,12 @@ export function MetaPromptForm({
     <Card className="p-6">
       <div className="flex justify-between items-center mb-4">
         <Label className="text-lg">What kind of AI assistant do you want?</Label>
-        <ModelSettings config={modelConfig} onChange={onModelConfigChange} />
+        <ModelSettingsSection
+          title="Meta Prompt Settings"
+          description="Configure the model for generating the meta prompt"
+          config={modelConfig}
+          onChange={onModelConfigChange}
+        />
       </div>
 
       <Form {...form}>

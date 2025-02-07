@@ -17,15 +17,26 @@ import {
   Legend,
 } from "recharts";
 import { Medal } from "lucide-react";
+import { ModelSettingsSection, type ModelConfig } from "@/components/settings/model-settings-section";
 
 interface ComparisonDashboardProps {
   variations: string[];
   evaluationResults: Record<string, number>[];
+  modelConfig: ModelConfig;
+  onModelConfigChange: (config: ModelConfig) => void;
+  defaultConfig: ModelConfig;
+  useDefaultSettings: boolean;
+  onUseDefaultSettingsChange: (use: boolean) => void;
 }
 
 export function ComparisonDashboard({
   variations,
-  evaluationResults
+  evaluationResults,
+  modelConfig,
+  onModelConfigChange,
+  defaultConfig,
+  useDefaultSettings,
+  onUseDefaultSettingsChange
 }: ComparisonDashboardProps) {
   const getAverageScore = (result: Record<string, number>) => {
     const values = Object.values(result);
@@ -60,6 +71,19 @@ export function ComparisonDashboard({
 
   return (
     <Card className="p-6 space-y-8">
+      <div className="flex justify-between items-center">
+        <h2 className="text-2xl font-bold">Results Dashboard</h2>
+        <ModelSettingsSection
+          title="Evaluation Settings"
+          description="Configure the model for evaluating prompt variations"
+          config={modelConfig}
+          onChange={onModelConfigChange}
+          defaultConfig={defaultConfig}
+          useDefaultSettings={useDefaultSettings}
+          onUseDefaultSettingsChange={onUseDefaultSettingsChange}
+        />
+      </div>
+
       {/* Leaderboard Section */}
       <div className="space-y-6">
         <h2 className="text-2xl font-bold text-center">Top Performing Variations</h2>

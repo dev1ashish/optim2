@@ -8,7 +8,15 @@ import { VariationGenerator } from "@/components/variation-generator";
 import { ComparisonDashboard } from "@/components/comparison-dashboard";
 import { useToast } from "@/hooks/use-toast";
 import type { MetaPromptInput, TestCase } from "@shared/schema";
-import type { ModelConfig } from "@/components/settings/model-settings";
+import type { ModelConfig } from "@/components/settings/model-settings-section";
+
+const defaultModelConfig: ModelConfig = {
+  provider: "openai",
+  model: "gpt-4o",
+  temperature: 0.7,
+  maxTokens: 2048,
+  apiKey: ""
+};
 
 export default function Home() {
   const [currentStep, setCurrentStep] = useState(1);
@@ -17,19 +25,21 @@ export default function Home() {
   const [variations, setVariations] = useState<string[]>([]);
   const [testCases, setTestCases] = useState<TestCase[]>([]);
   const [evaluationResults, setEvaluationResults] = useState<Record<string, number>[]>([]);
-  const [modelConfig, setModelConfig] = useState<ModelConfig>({
-    provider: "openai",
-    model: "gpt-4o",
-    temperature: 0.7,
-    maxTokens: 2048,
-    apiKey: "" // Initialize with empty API key
-  });
+
+  // Model configs for each section
+  const [metaPromptConfig, setMetaPromptConfig] = useState<ModelConfig>(defaultModelConfig);
+  const [variationConfig, setVariationConfig] = useState<ModelConfig>(defaultModelConfig);
+  const [evaluationConfig, setEvaluationConfig] = useState<ModelConfig>(defaultModelConfig);
+
+  // Settings usage flags
+  const [useDefaultForVariation, setUseDefaultForVariation] = useState(true);
+  const [useDefaultForEvaluation, setUseDefaultForEvaluation] = useState(true);
 
   const { toast } = useToast();
 
   // Check for API key before operations
-  const checkApiKey = () => {
-    if (!modelConfig.apiKey) {
+  const checkApiKey = (config: ModelConfig) => {
+    if (!config.apiKey) {
       toast({
         title: "API Key Required",
         description: "Please set your API key in the model settings before proceeding.",
@@ -42,9 +52,9 @@ export default function Home() {
 
   const metaPromptMutation = useMutation({
     mutationFn: async (input: MetaPromptInput) => {
-      if (!checkApiKey()) return;
+      if (!checkApiKey(metaPromptConfig)) return;
       setBaseInput(input.baseInput);
-      const generatedPrompt = await generateMetaPrompt(input, modelConfig);
+      const generatedPrompt = await generateMetaPrompt(input, metaPromptConfig);
       setMetaPrompt(generatedPrompt);
       setCurrentStep(2);
       return generatedPrompt;
@@ -53,13 +63,15 @@ export default function Home() {
 
   const variationMutation = useMutation({
     mutationFn: async (count: number) => {
-      if (!checkApiKey()) return;
+      const config = useDefaultForVariation ? metaPromptConfig : variationConfig;
+      if (!checkApiKey(config)) return;
+
       try {
         // Clear previous results
         setEvaluationResults([]);
 
         // Generate variations
-        const generatedVariations = await generateVariations(metaPrompt, count, modelConfig);
+        const generatedVariations = await generateVariations(metaPrompt, count, config);
         if (!generatedVariations.length) {
           throw new Error("Failed to generate variations");
         }
@@ -71,7 +83,7 @@ export default function Home() {
           baseInput,
           metaPrompt,
           generatedVariations,
-          modelConfig
+          config
         );
         if (!generatedTests.length) {
           throw new Error("Failed to generate test cases");
@@ -79,12 +91,13 @@ export default function Home() {
         setTestCases(generatedTests);
         setCurrentStep(3);
 
-        // Run evaluations
+        // Run evaluations with potentially different config
+        const evalConfig = useDefaultForEvaluation ? metaPromptConfig : evaluationConfig;
         const results = await Promise.all(
           generatedVariations.map(async (variation) => {
             const scores = await Promise.all(
               generatedTests.map(async (test) => {
-                return evaluatePrompt(variation, test.input, test.criteria, modelConfig);
+                return evaluatePrompt(variation, test.input, test.criteria, evalConfig);
               })
             );
 
@@ -124,7 +137,6 @@ export default function Home() {
     }
   });
 
-
   const handleMetaPromptSubmit = async (data: MetaPromptInput) => {
     try {
       await metaPromptMutation.mutateAsync(data);
@@ -148,8 +160,8 @@ export default function Home() {
       <div className="space-y-8">
         <MetaPromptForm
           onSubmit={handleMetaPromptSubmit}
-          modelConfig={modelConfig}
-          onModelConfigChange={setModelConfig}
+          modelConfig={metaPromptConfig}
+          onModelConfigChange={setMetaPromptConfig}
           isLoading={metaPromptMutation.isPending}
         />
 
@@ -159,6 +171,11 @@ export default function Home() {
             onGenerate={(count) => variationMutation.mutateAsync(count)}
             variations={variations}
             isLoading={variationMutation.isPending}
+            modelConfig={useDefaultForVariation ? metaPromptConfig : variationConfig}
+            onModelConfigChange={setVariationConfig}
+            defaultConfig={metaPromptConfig}
+            useDefaultSettings={useDefaultForVariation}
+            onUseDefaultSettingsChange={setUseDefaultForVariation}
           />
         )}
 
@@ -166,6 +183,11 @@ export default function Home() {
           <ComparisonDashboard
             variations={variations}
             evaluationResults={evaluationResults}
+            modelConfig={useDefaultForEvaluation ? metaPromptConfig : evaluationConfig}
+            onModelConfigChange={setEvaluationConfig}
+            defaultConfig={metaPromptConfig}
+            useDefaultSettings={useDefaultForEvaluation}
+            onUseDefaultSettingsChange={setUseDefaultForEvaluation}
           />
         )}
       </div>

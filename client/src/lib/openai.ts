@@ -1,6 +1,7 @@
 import OpenAI from "openai";
+import Anthropic from '@anthropic-ai/sdk';
 import { type MetaPromptInput } from "@shared/schema";
-import type { ModelConfig } from "@/components/settings/model-settings";
+import type { ModelConfig } from "@/components/settings/model-settings-section";
 
 // Helper function to get the right client based on provider
 function getClient(config: ModelConfig) {
@@ -14,12 +15,35 @@ function getClient(config: ModelConfig) {
         apiKey: config.apiKey,
         dangerouslyAllowBrowser: true
       });
-    // Add other providers here when implementing
-    default:
+    case "anthropic":
+      return new Anthropic({
+        apiKey: config.apiKey,
+      });
+    case "groq":
+      // Groq uses OpenAI's API format
       return new OpenAI({
         apiKey: config.apiKey,
+        baseURL: "https://api.groq.com/v1",
         dangerouslyAllowBrowser: true
       });
+    default:
+      throw new Error(`Unsupported provider: ${config.provider}`);
+  }
+}
+
+// Helper function to format messages based on provider
+function formatMessages(prompt: string, config: ModelConfig) {
+  switch (config.provider) {
+    case "anthropic":
+      return [{
+        role: "user",
+        content: prompt
+      }];
+    default:
+      return [{
+        role: "user",
+        content: prompt
+      }];
   }
 }
 
@@ -54,14 +78,25 @@ Format the response as a detailed prompt with clear sections for:
 
   try {
     const client = getClient(config);
-    const response = await client.chat.completions.create({
-      model: config.model,
-      messages: [{ role: "user", content: prompt }],
-      temperature: config.temperature,
-      max_tokens: config.maxTokens
-    });
+    const messages = formatMessages(prompt, config);
 
-    return response.choices[0].message.content || "";
+    if (config.provider === "anthropic") {
+      const response = await (client as Anthropic).messages.create({
+        model: config.model,
+        messages,
+        max_tokens: config.maxTokens,
+        temperature: config.temperature,
+      });
+      return response.content[0].text;
+    } else {
+      const response = await (client as OpenAI).chat.completions.create({
+        model: config.model,
+        messages,
+        temperature: config.temperature,
+        max_tokens: config.maxTokens
+      });
+      return response.choices[0].message.content || "";
+    }
   } catch (error) {
     handleApiError(error);
   }
@@ -99,22 +134,29 @@ Important: Each item in the variations array must be a complete string, not an o
 
   const client = getClient(config);
   try {
-    const response = await client.chat.completions.create({
-      model: config.model,
-      messages: [{ role: "user", content: prompt }],
-      temperature: config.temperature,
-      max_tokens: Math.max(config.maxTokens, 2048), // Ensure enough tokens for detailed responses
-      response_format: { type: "json_object" }
-    });
+    let content: string;
 
-    const content = response.choices[0].message.content;
-    if (!content) {
-      console.error("No content in response");
-      return [];
+    if (config.provider === "anthropic") {
+      const response = await (client as Anthropic).messages.create({
+        model: config.model,
+        messages: formatMessages(prompt, config),
+        max_tokens: Math.max(config.maxTokens, 2048),
+        temperature: config.temperature,
+      });
+      content = response.content[0].text;
+    } else {
+      const response = await (client as OpenAI).chat.completions.create({
+        model: config.model,
+        messages: formatMessages(prompt, config),
+        temperature: config.temperature,
+        max_tokens: Math.max(config.maxTokens, 2048),
+        response_format: { type: "json_object" }
+      });
+      content = response.choices[0].message.content || "";
     }
 
     try {
-      const result = JSON.parse(response.choices[0].message.content);
+      const result = JSON.parse(content);
       if (!Array.isArray(result.variations)) {
         console.error("Invalid response format - variations is not an array");
         return [];
@@ -150,15 +192,33 @@ ${Object.keys(criteria).join(", ")}
 Rate each criterion from 0 to 1 and return as JSON.`;
 
   const client = getClient(config);
-  const response = await client.chat.completions.create({
-    model: config.model,
-    messages: [{ role: "user", content: evaluationPrompt }],
-    temperature: config.temperature,
-    max_tokens: config.maxTokens,
-    response_format: { type: "json_object" }
-  });
+  try {
+    let content: string;
 
-  return JSON.parse(response.choices[0].message.content || "{}");
+    if (config.provider === "anthropic") {
+      const response = await (client as Anthropic).messages.create({
+        model: config.model,
+        messages: formatMessages(evaluationPrompt, config),
+        max_tokens: config.maxTokens,
+        temperature: config.temperature,
+      });
+      content = response.content[0].text;
+    } else {
+      const response = await (client as OpenAI).chat.completions.create({
+        model: config.model,
+        messages: formatMessages(evaluationPrompt, config),
+        temperature: config.temperature,
+        max_tokens: config.maxTokens,
+        response_format: { type: "json_object" }
+      });
+      content = response.choices[0].message.content || "";
+    }
+
+    return JSON.parse(content);
+  } catch (error) {
+    handleApiError(error);
+    return {};
+  }
 }
 
 export async function generateTestCases(
@@ -196,15 +256,27 @@ Return ONLY a JSON object with this structure:
 
   const client = getClient(config);
   try {
-    const response = await client.chat.completions.create({
-      model: config.model,
-      messages: [{ role: "user", content: prompt }],
-      temperature: config.temperature,
-      max_tokens: config.maxTokens,
-      response_format: { type: "json_object" }
-    });
+    let content: string;
 
-    const content = response.choices[0].message.content;
+    if (config.provider === "anthropic") {
+      const response = await (client as Anthropic).messages.create({
+        model: config.model,
+        messages: formatMessages(prompt, config),
+        max_tokens: config.maxTokens,
+        temperature: config.temperature,
+      });
+      content = response.content[0].text;
+    } else {
+      const response = await (client as OpenAI).chat.completions.create({
+        model: config.model,
+        messages: formatMessages(prompt, config),
+        temperature: config.temperature,
+        max_tokens: config.maxTokens,
+        response_format: { type: "json_object" }
+      });
+      content = response.choices[0].message.content || "";
+    }
+
     if (!content) {
       return [];
     }
