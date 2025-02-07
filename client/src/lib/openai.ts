@@ -39,15 +39,22 @@ function formatMessages(prompt: string, config: ModelConfig) {
   const messages = [];
 
   if (config.systemPrompt) {
-    messages.push({
-      role: config.provider === "anthropic" ? "assistant" : "system",
-      content: config.systemPrompt
-    });
+    if (config.provider === "anthropic") {
+      messages.push({
+        role: "assistant",
+        content: config.systemPrompt,
+      });
+    } else {
+      messages.push({
+        role: "system",
+        content: config.systemPrompt,
+      });
+    }
   }
 
   messages.push({
     role: "user",
-    content: prompt
+    content: prompt,
   });
 
   return messages;
@@ -64,7 +71,6 @@ function handleApiError(error: any) {
   throw error;
 }
 
-// the newest OpenAI model is "gpt-4o" which was released May 13, 2024. do not change this unless explicitly requested by the user
 export async function generateMetaPrompt(
   input: MetaPromptInput,
   config: ModelConfig,
@@ -108,6 +114,7 @@ Format the response as a detailed prompt with clear sections for:
     }
   } catch (error) {
     handleApiError(error);
+    return "";
   }
 }
 
@@ -131,15 +138,9 @@ For each variation:
 3. Each variation should be comprehensive and self-contained
 4. Aim for at least 250 words per variation
 
-Return ONLY a JSON object with this exact structure:
-{
-  "variations": [
-    "First complete variation text here",
-    "Second complete variation text here",
-    "Third complete variation text here"
-  ]
-}
-Important: Each item in the variations array must be a complete string, not an object.`;
+${config.provider === "anthropic" ? 
+  "Return the variations as a valid JSON string with this structure: { \"variations\": [\"First variation\", \"Second variation\", \"Third variation\"] }"
+  : ""}`;
 
   const client = getClient(config);
   try {
@@ -170,9 +171,7 @@ Important: Each item in the variations array must be a complete string, not an o
         console.error("Invalid response format - variations is not an array");
         return [];
       }
-      return result.variations.map((v) =>
-        typeof v === "string" ? v : JSON.stringify(v),
-      );
+      return result.variations;
     } catch (error) {
       console.error("JSON Parse Error:", error);
       return [];
@@ -200,7 +199,9 @@ ${testCase}
 Criteria:
 ${Object.keys(criteria).join(", ")}
 
-Rate each criterion from 0 to 1 and return as JSON.`;
+${config.provider === "anthropic" ? 
+  "Rate each criterion from 0 to 1 and return as a valid JSON object where keys are criteria names and values are scores." 
+  : "Rate each criterion from 0 to 1 and return as JSON."}`;
 
   const client = getClient(config);
   try {
@@ -254,18 +255,9 @@ For each test case:
 1. Create a challenging input scenario
 2. Define evaluation criteria with weights (0-1) based on what's important for this specific use case
 
-Return ONLY a JSON object with this structure:
-{
-  "testCases": [
-    {
-      "input": "test scenario here",
-      "criteria": {
-        "criterionName": 0.8,
-        "anotherCriterion": 0.6
-      }
-    }
-  ]
-}`;
+${config.provider === "anthropic" ? 
+  "Return the test cases as a valid JSON string with this structure: { \"testCases\": [{ \"input\": \"test scenario\", \"criteria\": { \"criterionName\": 0.8 } }] }"
+  : "Return ONLY a JSON object with this structure: { \"testCases\": [{ \"input\": \"test scenario\", \"criteria\": { \"criterionName\": 0.8 } }] }"}`;
 
   const client = getClient(config);
   try {
