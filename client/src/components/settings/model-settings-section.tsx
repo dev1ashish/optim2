@@ -18,6 +18,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { Textarea } from "@/components/ui/textarea";
 import { useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -27,6 +28,7 @@ export interface ModelConfig {
   temperature: number;
   maxTokens: number;
   apiKey?: string;
+  systemPrompt?: string;
 }
 
 interface ModelSettingsSectionProps {
@@ -56,11 +58,13 @@ export function ModelSettingsSection({
 }: ModelSettingsSectionProps) {
   const [open, setOpen] = useState(false);
   const [apiKey, setApiKey] = useState(config.apiKey || "");
+  const [systemPrompt, setSystemPrompt] = useState(config.systemPrompt || "");
   const { toast } = useToast();
 
   useEffect(() => {
     setApiKey(config.apiKey || "");
-  }, [config.apiKey]);
+    setSystemPrompt(config.systemPrompt || "");
+  }, [config.apiKey, config.systemPrompt]);
 
   const handleSave = () => {
     if (!useDefaultSettings && !apiKey) {
@@ -72,7 +76,7 @@ export function ModelSettingsSection({
       return;
     }
 
-    onChange({ ...config, apiKey });
+    onChange({ ...config, apiKey, systemPrompt });
     setOpen(false);
     toast({
       title: "Settings Saved",
@@ -113,6 +117,16 @@ export function ModelSettingsSection({
                   value={apiKey}
                   onChange={(e) => setApiKey(e.target.value)}
                   placeholder={`Enter your ${config.provider} API key`}
+                />
+              </div>
+
+              <div className="grid gap-2">
+                <Label>System Prompt</Label>
+                <Textarea
+                  value={systemPrompt}
+                  onChange={(e) => setSystemPrompt(e.target.value)}
+                  placeholder="Enter system prompt to guide the model's behavior"
+                  className="min-h-[100px]"
                 />
               </div>
 

@@ -15,7 +15,18 @@ const defaultModelConfig: ModelConfig = {
   model: "gpt-4o",
   temperature: 0.7,
   maxTokens: 2048,
-  apiKey: ""
+  apiKey: "",
+  systemPrompt: "You are a professional AI prompt engineer, skilled at creating detailed and effective prompts. Your goal is to create clear, structured prompts that guide AI models to provide high-quality responses."
+};
+
+const defaultVariationConfig: ModelConfig = {
+  ...defaultModelConfig,
+  systemPrompt: "You are a creative prompt variation generator. Your goal is to create diverse but focused variations of the given prompt while maintaining the core functionality and objectives. Each variation should be unique but equally effective."
+};
+
+const defaultEvaluationConfig: ModelConfig = {
+  ...defaultModelConfig,
+  systemPrompt: "You are an objective prompt evaluator. Your task is to assess prompts based on given criteria with fairness and consistency. Provide numerical scores based on clear rubrics and objective analysis."
 };
 
 export default function Home() {
@@ -28,8 +39,8 @@ export default function Home() {
 
   // Model configs for each section
   const [metaPromptConfig, setMetaPromptConfig] = useState<ModelConfig>(defaultModelConfig);
-  const [variationConfig, setVariationConfig] = useState<ModelConfig>(defaultModelConfig);
-  const [evaluationConfig, setEvaluationConfig] = useState<ModelConfig>(defaultModelConfig);
+  const [variationConfig, setVariationConfig] = useState<ModelConfig>(defaultVariationConfig);
+  const [evaluationConfig, setEvaluationConfig] = useState<ModelConfig>(defaultEvaluationConfig);
 
   // Settings usage flags
   const [useDefaultForVariation, setUseDefaultForVariation] = useState(true);

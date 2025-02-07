@@ -33,18 +33,28 @@ function getClient(config: ModelConfig) {
 
 // Helper function to format messages based on provider
 function formatMessages(prompt: string, config: ModelConfig) {
-  switch (config.provider) {
-    case "anthropic":
-      return [{
-        role: "user",
-        content: prompt
-      }];
-    default:
-      return [{
-        role: "user",
-        content: prompt
-      }];
+  let messages = [];
+
+  if (config.systemPrompt) {
+    if (config.provider === "anthropic") {
+      messages.push({
+        role: "assistant",
+        content: config.systemPrompt
+      });
+    } else {
+      messages.push({
+        role: "system",
+        content: config.systemPrompt
+      });
+    }
   }
+
+  messages.push({
+    role: "user",
+    content: prompt
+  });
+
+  return messages;
 }
 
 // Handler for API errors
