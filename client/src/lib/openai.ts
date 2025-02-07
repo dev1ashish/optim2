@@ -59,19 +59,41 @@ export async function generateVariations(
 
 ${metaPrompt}
 
-Return the variations in a JSON array format. Each variation should be complete and self-contained.`;
+Return ONLY a JSON object with the following structure:
+{
+  "variations": [
+    "variation1",
+    "variation2",
+    "variation3"
+  ]
+}`;
 
   const client = getClient(config);
-  const response = await client.chat.completions.create({
-    model: config.model,
-    messages: [{ role: "user", content: prompt }],
-    temperature: config.temperature,
-    max_tokens: config.maxTokens,
-    response_format: { type: "json_object" }
-  });
+  try {
+    const response = await client.chat.completions.create({
+      model: config.model,
+      messages: [{ role: "user", content: prompt }],
+      temperature: config.temperature,
+      max_tokens: config.maxTokens,
+      response_format: { type: "json_object" }
+    });
 
-  const result = JSON.parse(response.choices[0].message.content || "{}");
-  return result.variations || [];
+    const content = response.choices[0].message.content;
+    if (!content) {
+      return [];
+    }
+
+    try {
+      const result = JSON.parse(content);
+      return Array.isArray(result.variations) ? result.variations : [];
+    } catch (error) {
+      console.error("JSON Parse Error:", error);
+      return [];
+    }
+  } catch (error) {
+    console.error("API Error:", error);
+    throw error;
+  }
 }
 
 export async function evaluatePrompt(
