@@ -55,9 +55,20 @@ export async function generateVariations(
   count: number = 3,
   config: ModelConfig
 ): Promise<string[]> {
-  const prompt = `Generate ${count} variations of the following meta prompt:
+  const prompt = `Generate ${count} detailed variations of the following meta prompt:
 
 ${metaPrompt}
+
+For each variation:
+1. Maintain the core functionality but vary the emphasis and approach
+2. Include clear sections for:
+   - Role and Persona
+   - Communication Style
+   - Task Handling Guidelines
+   - Response Format
+   - Constraints and Safety Measures
+3. Each variation should be comprehensive and self-contained
+4. Aim for at least 250 words per variation
 
 Return ONLY a JSON object with the following structure:
 {
@@ -74,12 +85,13 @@ Return ONLY a JSON object with the following structure:
       model: config.model,
       messages: [{ role: "user", content: prompt }],
       temperature: config.temperature,
-      max_tokens: config.maxTokens,
+      max_tokens: Math.max(config.maxTokens, 2048), // Ensure enough tokens for detailed responses
       response_format: { type: "json_object" }
     });
 
     const content = response.choices[0].message.content;
     if (!content) {
+      console.error("No content in response");
       return [];
     }
 

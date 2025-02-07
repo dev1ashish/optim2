@@ -38,53 +38,68 @@ export default function Home() {
 
   const variationMutation = useMutation({
     mutationFn: async (count: number) => {
-      const generatedVariations = await generateVariations(metaPrompt, count, modelConfig);
-      setVariations(generatedVariations);
+      try {
+        const generatedVariations = await generateVariations(metaPrompt, count, modelConfig);
+        setVariations(generatedVariations);
 
-      // Automatically generate test cases after variations
-      if (generatedVariations.length > 0) {
-        const generatedTests = await generateTestCases(baseInput, metaPrompt, generatedVariations, modelConfig);
-        setTestCases(generatedTests);
-        setCurrentStep(3);
-      }
-
-      return generatedVariations;
-    },
-  });
-
-  const evaluationMutation = useMutation({
-    mutationFn: async () => {
-      const results = await Promise.all(
-        variations.map(async (variation) => {
-          const scores = await Promise.all(
-            testCases.map(async (test) => {
-              return evaluatePrompt(variation, test.input, test.criteria, modelConfig);
-            })
+        if (generatedVariations.length > 0) {
+          // Generate test cases
+          const generatedTests = await generateTestCases(
+            baseInput,
+            metaPrompt,
+            generatedVariations,
+            modelConfig
           );
+          setTestCases(generatedTests);
 
-          const averagedScores: Record<string, number> = {};
-          Object.keys(scores[0]).forEach((criterion) => {
-            averagedScores[criterion] = scores.reduce((sum, score) => sum + score[criterion], 0) / scores.length;
-          });
+          // Automatically start evaluation
+          if (generatedTests.length > 0) {
+            const results = await Promise.all(
+              generatedVariations.map(async (variation) => {
+                const scores = await Promise.all(
+                  generatedTests.map(async (test) => {
+                    return evaluatePrompt(variation, test.input, test.criteria, modelConfig);
+                  })
+                );
 
-          return averagedScores;
-        })
-      );
+                // Average the scores across all test cases
+                const averagedScores: Record<string, number> = {};
+                Object.keys(scores[0]).forEach((criterion) => {
+                  averagedScores[criterion] =
+                    scores.reduce((sum, score) => sum + score[criterion], 0) / scores.length;
+                });
 
-      setEvaluationResults(results);
-      setCurrentStep(4);
+                return averagedScores;
+              })
+            );
 
-      await apiRequest("POST", "/api/prompts", {
-        baseInput: baseInput,
-        metaPrompt: metaPrompt,
-        variations: variations,
-        testCases: testCases,
-        evaluationResults: results
-      });
+            setEvaluationResults(results);
+            setCurrentStep(4);
 
-      return results;
+            // Save results
+            await apiRequest("POST", "/api/prompts", {
+              baseInput,
+              metaPrompt,
+              variations: generatedVariations,
+              testCases: generatedTests,
+              evaluationResults: results
+            });
+          }
+        }
+
+        return generatedVariations;
+      } catch (error) {
+        console.error("Variation generation error:", error);
+        toast({
+          title: "Error",
+          description: "Failed to generate variations and test cases",
+          variant: "destructive"
+        });
+        throw error;
+      }
     }
   });
+
 
   const handleMetaPromptSubmit = async (data: MetaPromptInput) => {
     try {
