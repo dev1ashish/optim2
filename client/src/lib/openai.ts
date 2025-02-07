@@ -3,12 +3,9 @@ import Anthropic from "@anthropic-ai/sdk";
 import { type MetaPromptInput } from "@shared/schema";
 import type { ModelConfig } from "@/components/settings/model-settings-section";
 
-// Helper function to get the right client based on provider
 function getClient(config: ModelConfig) {
   if (!config.apiKey) {
-    throw new Error(
-      "API key is required. Please set it in the model settings.",
-    );
+    throw new Error("API key is required. Please set it in the model settings.");
   }
 
   switch (config.provider) {
@@ -30,6 +27,98 @@ function getClient(config: ModelConfig) {
     default:
       throw new Error(`Unsupported provider: ${config.provider}`);
   }
+}
+
+async function makeAnthropicRequest(client: Anthropic, messages: any[], config: ModelConfig) {
+  const response = await client.messages.create({
+    model: config.model,
+    messages,
+    max_tokens: config.maxTokens,
+    temperature: config.temperature,
+  });
+  return response.content[0].text;
+}
+
+async function makeOpenAIRequest(client: OpenAI, messages: any[], config: ModelConfig, requireJson: boolean = false) {
+  const response = await client.chat.completions.create({
+    model: config.model,
+    messages,
+    temperature: config.temperature,
+    max_tokens: config.maxTokens,
+    ...(requireJson ? { response_format: { type: "json_object" } } : {}),
+  });
+  return response.choices[0].message.content || "";
+}
+
+function formatMessages(prompt: string, config: ModelConfig, systemPrompt?: string) {
+  const messages = [];
+
+  // Add system prompt if provided
+  if (systemPrompt) {
+    if (config.provider === "anthropic") {
+      messages.push({
+        role: "assistant" as const,
+        content: systemPrompt,
+      });
+    } else {
+      messages.push({
+        role: "system" as const,
+        content: systemPrompt,
+      });
+    }
+  }
+
+  // Add user message
+  messages.push({
+    role: "user" as const,
+    content: prompt,
+  });
+
+  return messages;
+}
+
+export async function generateMetaPrompt(
+  input: MetaPromptInput,
+  config: ModelConfig,
+): Promise<string> {
+  const prompt = `Given this request for an AI assistant: "${input.baseInput}"
+
+Create a comprehensive meta-prompt that includes:
+1. Extracted AI Role
+2. Appropriate Tone & Style
+3. Core Functionality
+4. Necessary Constraints
+5. Edge Cases to Handle
+
+Format the response as a detailed prompt with clear sections for:
+- Core Behavioral Guidelines
+- Communication Style
+- Response Structure
+- Constraints & Safety
+- Example Responses`;
+
+  try {
+    const client = getClient(config);
+    const messages = formatMessages(prompt, config, config.systemPrompt);
+
+    if (config.provider === "anthropic") {
+      return await makeAnthropicRequest(client as Anthropic, messages, config);
+    } else {
+      return await makeOpenAIRequest(client as OpenAI, messages, config);
+    }
+  } catch (error: any) {
+    console.error("Meta prompt generation error:", error);
+    throw new Error(error.message || "Failed to generate meta prompt");
+  }
+}
+
+// Handler for API errors
+function handleApiError(error: any) {
+  console.error("API Error:", error);
+  if (error.error?.type === "tokens" || error.error?.code === "rate_limit_exceeded") {
+    throw new Error("Rate limit exceeded. Please wait a moment and try again.");
+  }
+  throw error;
 }
 
 // Format messages based on provider
@@ -65,15 +154,6 @@ function formatMessagesForProvider(prompt: string, config: ModelConfig) {
   return messages;
 }
 
-// Handler for API errors
-function handleApiError(error: any) {
-  console.error("API Error:", error);
-  if (error.error?.type === "tokens" || error.error?.code === "rate_limit_exceeded") {
-    throw new Error("Rate limit exceeded. Please wait a moment and try again.");
-  }
-  throw error;
-}
-
 async function makeProviderRequest(client: OpenAI | Anthropic, messages: any[], config: ModelConfig) {
   if (config.provider === "anthropic") {
     const response = await (client as Anthropic).messages.create({
@@ -89,7 +169,7 @@ async function makeProviderRequest(client: OpenAI | Anthropic, messages: any[], 
       messages: messages,
       temperature: config.temperature,
       max_tokens: config.maxTokens,
-      response_format: { type: "json_object" },
+      //response_format: { type: "json_object" }, // Removed response_format for non-JSON responses
     });
     return response.choices[0].message.content || "";
   }
@@ -217,37 +297,5 @@ ${jsonFormat}`;
   } catch (error) {
     console.error("Test Case Generation Error:", error);
     return [];
-  }
-}
-
-export async function generateMetaPrompt(
-  input: MetaPromptInput,
-  config: ModelConfig,
-): Promise<string> {
-  const prompt = `Given this request for an AI assistant: "${input.baseInput}"
-
-Create a comprehensive meta-prompt that includes:
-1. Extracted AI Role
-2. Appropriate Tone & Style
-3. Core Functionality
-4. Necessary Constraints
-5. Edge Cases to Handle
-
-Format the response as a detailed prompt with clear sections for:
-- Core Behavioral Guidelines
-- Communication Style
-- Response Structure
-- Constraints & Safety
-- Example Responses`;
-
-  try {
-    const client = getClient(config);
-    const messages = formatMessagesForProvider(prompt, config);
-
-    const content = await makeProviderRequest(client, messages, config);
-    return content;
-  } catch (error) {
-    handleApiError(error);
-    return "";
   }
 }
