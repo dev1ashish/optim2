@@ -2,20 +2,33 @@ import OpenAI from "openai";
 import { type MetaPromptInput } from "@shared/schema";
 import type { ModelConfig } from "@/components/settings/model-settings";
 
-const openai = new OpenAI({
-  apiKey: import.meta.env.VITE_OPENAI_API_KEY,
-  dangerouslyAllowBrowser: true // Required for browser environment
-});
-
 // Helper function to get the right client based on provider
 function getClient(config: ModelConfig) {
+  if (!config.apiKey) {
+    throw new Error("API key is required. Please set it in the model settings.");
+  }
+
   switch (config.provider) {
     case "openai":
-      return openai;
+      return new OpenAI({
+        apiKey: config.apiKey,
+        dangerouslyAllowBrowser: true
+      });
     // Add other providers here when implementing
     default:
-      return openai;
+      return new OpenAI({
+        apiKey: config.apiKey,
+        dangerouslyAllowBrowser: true
+      });
   }
+}
+
+// Handler for API errors
+function handleApiError(error: any) {
+  if (error.error?.type === "tokens" || error.error?.code === "rate_limit_exceeded") {
+    throw new Error(`Rate limit exceeded. Please wait a moment and try again.`);
+  }
+  throw error;
 }
 
 // the newest OpenAI model is "gpt-4o" which was released May 13, 2024. do not change this unless explicitly requested by the user
@@ -39,15 +52,19 @@ Format the response as a detailed prompt with clear sections for:
 - Constraints & Safety
 - Example Responses`;
 
-  const client = getClient(config);
-  const response = await client.chat.completions.create({
-    model: config.model,
-    messages: [{ role: "user", content: prompt }],
-    temperature: config.temperature,
-    max_tokens: config.maxTokens
-  });
+  try {
+    const client = getClient(config);
+    const response = await client.chat.completions.create({
+      model: config.model,
+      messages: [{ role: "user", content: prompt }],
+      temperature: config.temperature,
+      max_tokens: config.maxTokens
+    });
 
-  return response.choices[0].message.content || "";
+    return response.choices[0].message.content || "";
+  } catch (error) {
+    handleApiError(error);
+  }
 }
 
 export async function generateVariations(

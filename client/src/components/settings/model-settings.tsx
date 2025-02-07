@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Dialog,
   DialogContent,
@@ -19,12 +19,14 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
+import { useToast } from "@/hooks/use-toast";
 
 export interface ModelConfig {
   provider: "openai" | "anthropic" | "groq";
   model: string;
   temperature: number;
   maxTokens: number;
+  apiKey?: string;
 }
 
 interface ModelSettingsProps {
@@ -40,6 +42,30 @@ const MODEL_OPTIONS = {
 
 export function ModelSettings({ config, onChange }: ModelSettingsProps) {
   const [open, setOpen] = useState(false);
+  const [apiKey, setApiKey] = useState(config.apiKey || "");
+  const { toast } = useToast();
+
+  useEffect(() => {
+    setApiKey(config.apiKey || "");
+  }, [config.apiKey]);
+
+  const handleSave = () => {
+    if (!apiKey) {
+      toast({
+        title: "API Key Required",
+        description: "Please enter your API key to continue",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    onChange({ ...config, apiKey });
+    setOpen(false);
+    toast({
+      title: "Settings Saved",
+      description: "Your API key and model settings have been updated."
+    });
+  };
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -56,6 +82,16 @@ export function ModelSettings({ config, onChange }: ModelSettingsProps) {
           </DialogDescription>
         </DialogHeader>
         <div className="grid gap-4 py-4">
+          <div className="grid gap-2">
+            <Label>API Key</Label>
+            <Input
+              type="password"
+              value={apiKey}
+              onChange={(e) => setApiKey(e.target.value)}
+              placeholder={`Enter your ${config.provider} API key`}
+            />
+          </div>
+
           <div className="grid gap-2">
             <Label>Provider</Label>
             <Select
@@ -121,6 +157,8 @@ export function ModelSettings({ config, onChange }: ModelSettingsProps) {
               max={4096}
             />
           </div>
+
+          <Button onClick={handleSave} className="mt-4">Save Settings</Button>
         </div>
       </DialogContent>
     </Dialog>

@@ -21,13 +21,28 @@ export default function Home() {
     provider: "openai",
     model: "gpt-4o",
     temperature: 0.7,
-    maxTokens: 2048
+    maxTokens: 2048,
+    apiKey: "" // Initialize with empty API key
   });
 
   const { toast } = useToast();
 
+  // Check for API key before operations
+  const checkApiKey = () => {
+    if (!modelConfig.apiKey) {
+      toast({
+        title: "API Key Required",
+        description: "Please set your API key in the model settings before proceeding.",
+        variant: "destructive"
+      });
+      return false;
+    }
+    return true;
+  };
+
   const metaPromptMutation = useMutation({
     mutationFn: async (input: MetaPromptInput) => {
+      if (!checkApiKey()) return;
       setBaseInput(input.baseInput);
       const generatedPrompt = await generateMetaPrompt(input, modelConfig);
       setMetaPrompt(generatedPrompt);
@@ -38,6 +53,7 @@ export default function Home() {
 
   const variationMutation = useMutation({
     mutationFn: async (count: number) => {
+      if (!checkApiKey()) return;
       try {
         // Clear previous results
         setEvaluationResults([]);
@@ -130,7 +146,7 @@ export default function Home() {
       <PromptChain currentStep={currentStep} />
 
       <div className="space-y-8">
-        <MetaPromptForm 
+        <MetaPromptForm
           onSubmit={handleMetaPromptSubmit}
           modelConfig={modelConfig}
           onModelConfigChange={setModelConfig}
