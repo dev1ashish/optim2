@@ -22,7 +22,6 @@ function getClient(config: ModelConfig) {
         apiKey: config.apiKey,
       });
     case "groq":
-      // Groq uses OpenAI's API format
       return new OpenAI({
         apiKey: config.apiKey,
         baseURL: "https://api.groq.com/v1",
@@ -33,41 +32,67 @@ function getClient(config: ModelConfig) {
   }
 }
 
-// Helper function to format messages based on provider
-function formatMessages(prompt: string, config: ModelConfig) {
+// Format messages based on provider
+function formatMessagesForProvider(prompt: string, config: ModelConfig) {
   const messages = [];
 
   if (config.systemPrompt) {
     if (config.provider === "anthropic") {
       messages.push({
-        role: "assistant",
+        role: "assistant" as const,
         content: config.systemPrompt,
       });
     } else {
       messages.push({
-        role: "system",
+        role: "system" as const,
         content: config.systemPrompt,
       });
     }
   }
 
-  messages.push({
-    role: "user",
-    content: prompt,
-  });
+  if (config.provider === "anthropic") {
+    messages.push({
+      role: "user" as const,
+      content: prompt,
+    });
+  } else {
+    messages.push({
+      role: "user" as const,
+      content: prompt,
+    });
+  }
 
   return messages;
 }
 
 // Handler for API errors
 function handleApiError(error: any) {
-  if (
-    error.error?.type === "tokens" ||
-    error.error?.code === "rate_limit_exceeded"
-  ) {
-    throw new Error(`Rate limit exceeded. Please wait a moment and try again.`);
+  console.error("API Error:", error);
+  if (error.error?.type === "tokens" || error.error?.code === "rate_limit_exceeded") {
+    throw new Error("Rate limit exceeded. Please wait a moment and try again.");
   }
   throw error;
+}
+
+async function makeProviderRequest(client: OpenAI | Anthropic, messages: any[], config: ModelConfig) {
+  if (config.provider === "anthropic") {
+    const response = await (client as Anthropic).messages.create({
+      model: config.model,
+      messages: messages,
+      max_tokens: config.maxTokens,
+      temperature: config.temperature,
+    });
+    return response.content[0].text;
+  } else {
+    const response = await (client as OpenAI).chat.completions.create({
+      model: config.model,
+      messages: messages,
+      temperature: config.temperature,
+      max_tokens: config.maxTokens,
+      response_format: { type: "json_object" },
+    });
+    return response.choices[0].message.content || "";
+  }
 }
 
 export async function generateVariations(
@@ -75,10 +100,9 @@ export async function generateVariations(
   count: number = 3,
   config: ModelConfig,
 ): Promise<string[]> {
-  // Add explicit JSON format instruction based on provider
-  const jsonInstruction = config.provider === "anthropic" 
-    ? "Format your response as a JSON string with this exact structure: { \"variations\": [\"variation1\", \"variation2\", \"variation3\"] }"
-    : "Return a JSON object with exactly this structure: { \"variations\": [\"variation1\", \"variation2\", \"variation3\"] }";
+  const jsonFormat = config.provider === "anthropic"
+    ? 'Format your response as a JSON string with this exact structure: { "variations": ["variation1", "variation2", "variation3"] }'
+    : 'Return a JSON object with this exact structure: { "variations": ["variation1", "variation2", "variation3"] }';
 
   const prompt = `Generate ${count} detailed variations of the following meta prompt:
 
@@ -95,45 +119,27 @@ For each variation:
 3. Each variation should be comprehensive and self-contained
 4. Aim for at least 250 words per variation
 
-${jsonInstruction}`;
+${jsonFormat}`;
 
   const client = getClient(config);
   try {
-    let content: string;
-
-    if (config.provider === "anthropic") {
-      const response = await (client as Anthropic).messages.create({
-        model: config.model,
-        messages: formatMessages(prompt, config),
-        max_tokens: Math.max(config.maxTokens, 2048),
-        temperature: config.temperature,
-      });
-      content = response.content[0].text;
-    } else {
-      const response = await (client as OpenAI).chat.completions.create({
-        model: config.model,
-        messages: formatMessages(prompt, config),
-        temperature: config.temperature,
-        max_tokens: Math.max(config.maxTokens, 2048),
-        response_format: { type: "json_object" },
-      });
-      content = response.choices[0].message.content || "";
-    }
+    const messages = formatMessagesForProvider(prompt, config);
+    const content = await makeProviderRequest(client, messages, config);
 
     try {
       const result = JSON.parse(content);
       if (!Array.isArray(result.variations)) {
-        console.error("Invalid response format - variations is not an array");
+        console.error("Invalid response format - variations is not an array", result);
         return [];
       }
       return result.variations;
     } catch (error) {
-      console.error("JSON Parse Error:", error);
+      console.error("JSON Parse Error:", error, content);
       return [];
     }
   } catch (error) {
-    console.error("API Error:", error);
-    throw error;
+    handleApiError(error);
+    return [];
   }
 }
 
@@ -143,9 +149,9 @@ export async function evaluatePrompt(
   criteria: Record<string, number>,
   config: ModelConfig,
 ): Promise<Record<string, number>> {
-  const jsonInstruction = config.provider === "anthropic"
-    ? "Format your response as a JSON object where keys are criteria names and values are scores between 0 and 1."
-    : "Return a JSON object where keys are criteria names and values are scores between 0 and 1.";
+  const jsonFormat = config.provider === "anthropic"
+    ? 'Format your response as a JSON object where keys are criteria names and values are scores between 0 and 1.'
+    : 'Return a JSON object where keys are criteria names and values are scores between 0 and 1.';
 
   const evaluationPrompt = `Evaluate the following prompt against the test case using the given criteria:
 
@@ -158,31 +164,12 @@ ${testCase}
 Criteria:
 ${Object.keys(criteria).join(", ")}
 
-${jsonInstruction}`;
+${jsonFormat}`;
 
   const client = getClient(config);
   try {
-    let content: string;
-
-    if (config.provider === "anthropic") {
-      const response = await (client as Anthropic).messages.create({
-        model: config.model,
-        messages: formatMessages(evaluationPrompt, config),
-        max_tokens: config.maxTokens,
-        temperature: config.temperature,
-      });
-      content = response.content[0].text;
-    } else {
-      const response = await (client as OpenAI).chat.completions.create({
-        model: config.model,
-        messages: formatMessages(evaluationPrompt, config),
-        temperature: config.temperature,
-        max_tokens: config.maxTokens,
-        response_format: { type: "json_object" },
-      });
-      content = response.choices[0].message.content || "";
-    }
-
+    const messages = formatMessagesForProvider(evaluationPrompt, config);
+    const content = await makeProviderRequest(client, messages, config);
     return JSON.parse(content);
   } catch (error) {
     handleApiError(error);
@@ -195,15 +182,13 @@ export async function generateTestCases(
   metaPrompt: string,
   variations: string[],
   config: ModelConfig,
-): Promise<
-  {
-    input: string;
-    criteria: Record<string, number>;
-  }[]
-> {
-  const jsonInstruction = config.provider === "anthropic"
-    ? "Format your response as a JSON string with this structure: { \"testCases\": [{ \"input\": \"test scenario\", \"criteria\": { \"criterionName\": 0.8 } }] }"
-    : "Return a JSON object with this structure: { \"testCases\": [{ \"input\": \"test scenario\", \"criteria\": { \"criterionName\": 0.8 } }] }";
+): Promise<Array<{
+  input: string;
+  criteria: Record<string, number>;
+}>> {
+  const jsonFormat = config.provider === "anthropic"
+    ? 'Format your response as a JSON string with this structure: { "testCases": [{ "input": "test scenario", "criteria": { "criterionName": 0.8 } }] }'
+    : 'Return a JSON object with this structure: { "testCases": [{ "input": "test scenario", "criteria": { "criterionName": 0.8 } }] }';
 
   const prompt = `Given this context:
 Base Input: "${baseInput}"
@@ -216,30 +201,12 @@ For each test case:
 1. Create a challenging input scenario
 2. Define evaluation criteria with weights (0-1) based on what's important for this specific use case
 
-${jsonInstruction}`;
+${jsonFormat}`;
 
   const client = getClient(config);
   try {
-    let content: string;
-
-    if (config.provider === "anthropic") {
-      const response = await (client as Anthropic).messages.create({
-        model: config.model,
-        messages: formatMessages(prompt, config),
-        max_tokens: config.maxTokens,
-        temperature: config.temperature,
-      });
-      content = response.content[0].text;
-    } else {
-      const response = await (client as OpenAI).chat.completions.create({
-        model: config.model,
-        messages: formatMessages(prompt, config),
-        temperature: config.temperature,
-        max_tokens: config.maxTokens,
-        response_format: { type: "json_object" },
-      });
-      content = response.choices[0].message.content || "";
-    }
+    const messages = formatMessagesForProvider(prompt, config);
+    const content = await makeProviderRequest(client, messages, config);
 
     if (!content) {
       return [];
@@ -275,25 +242,10 @@ Format the response as a detailed prompt with clear sections for:
 
   try {
     const client = getClient(config);
-    const messages = formatMessages(prompt, config);
+    const messages = formatMessagesForProvider(prompt, config);
 
-    if (config.provider === "anthropic") {
-      const response = await (client as Anthropic).messages.create({
-        model: config.model,
-        messages,
-        max_tokens: config.maxTokens,
-        temperature: config.temperature,
-      });
-      return response.content[0].text;
-    } else {
-      const response = await (client as OpenAI).chat.completions.create({
-        model: config.model,
-        messages,
-        temperature: config.temperature,
-        max_tokens: config.maxTokens,
-      });
-      return response.choices[0].message.content || "";
-    }
+    const content = await makeProviderRequest(client, messages, config);
+    return content;
   } catch (error) {
     handleApiError(error);
     return "";
