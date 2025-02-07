@@ -29,52 +29,69 @@ function getClient(config: ModelConfig) {
   }
 }
 
-async function makeAnthropicRequest(client: Anthropic, messages: any[], config: ModelConfig) {
-  const response = await client.messages.create({
-    model: config.model,
-    messages,
-    max_tokens: config.maxTokens,
-    temperature: config.temperature,
-  });
-  return response.content[0].text;
-}
-
-async function makeOpenAIRequest(client: OpenAI, messages: any[], config: ModelConfig, requireJson: boolean = false) {
-  const response = await client.chat.completions.create({
-    model: config.model,
-    messages,
-    temperature: config.temperature,
-    max_tokens: config.maxTokens,
-    ...(requireJson ? { response_format: { type: "json_object" } } : {}),
-  });
-  return response.choices[0].message.content || "";
-}
-
-function formatMessages(prompt: string, config: ModelConfig, systemPrompt?: string) {
-  const messages = [];
-
-  // Add system prompt if provided
-  if (systemPrompt) {
-    if (config.provider === "anthropic") {
-      messages.push({
-        role: "assistant" as const,
-        content: systemPrompt,
-      });
-    } else {
+function formatMessagesForProvider(prompt: string, config: ModelConfig) {
+  if (config.provider === "anthropic") {
+    return [{
+      role: "user",
+      content: config.systemPrompt 
+        ? `${config.systemPrompt}\n\n${prompt}`
+        : prompt
+    }];
+  } else {
+    const messages = [];
+    if (config.systemPrompt) {
       messages.push({
         role: "system" as const,
-        content: systemPrompt,
+        content: config.systemPrompt,
       });
     }
+    messages.push({
+      role: "user" as const,
+      content: prompt,
+    });
+    return messages;
   }
+}
 
-  // Add user message
-  messages.push({
-    role: "user" as const,
-    content: prompt,
-  });
+async function makeProviderRequest(
+  client: OpenAI | Anthropic,
+  messages: any[],
+  config: ModelConfig,
+  requireJson: boolean = false
+) {
+  try {
+    if (config.provider === "anthropic") {
+      const response = await (client as Anthropic).messages.create({
+        model: config.model,
+        messages,
+        max_tokens: config.maxTokens,
+        temperature: config.temperature,
+      });
 
-  return messages;
+      if (!response.content || !Array.isArray(response.content) || response.content.length === 0) {
+        throw new Error("Invalid response format from Anthropic API");
+      }
+
+      const firstContent = response.content[0];
+      if (!('text' in firstContent)) {
+        throw new Error("Missing text content in Anthropic response");
+      }
+
+      return firstContent.text;
+    } else {
+      const response = await (client as OpenAI).chat.completions.create({
+        model: config.model,
+        messages,
+        temperature: config.temperature,
+        max_tokens: config.maxTokens,
+        ...(requireJson ? { response_format: { type: "json_object" } } : {}),
+      });
+      return response.choices[0].message.content || "";
+    }
+  } catch (error: any) {
+    console.error(`API Error (${config.provider}):`, error);
+    throw new Error(error.message || `Failed to make ${config.provider} API request`);
+  }
 }
 
 export async function generateMetaPrompt(
@@ -99,79 +116,11 @@ Format the response as a detailed prompt with clear sections for:
 
   try {
     const client = getClient(config);
-    const messages = formatMessages(prompt, config, config.systemPrompt);
-
-    if (config.provider === "anthropic") {
-      return await makeAnthropicRequest(client as Anthropic, messages, config);
-    } else {
-      return await makeOpenAIRequest(client as OpenAI, messages, config);
-    }
+    const messages = formatMessagesForProvider(prompt, config);
+    return await makeProviderRequest(client, messages, config);
   } catch (error: any) {
     console.error("Meta prompt generation error:", error);
     throw new Error(error.message || "Failed to generate meta prompt");
-  }
-}
-
-// Handler for API errors
-function handleApiError(error: any) {
-  console.error("API Error:", error);
-  if (error.error?.type === "tokens" || error.error?.code === "rate_limit_exceeded") {
-    throw new Error("Rate limit exceeded. Please wait a moment and try again.");
-  }
-  throw error;
-}
-
-// Format messages based on provider
-function formatMessagesForProvider(prompt: string, config: ModelConfig) {
-  const messages = [];
-
-  if (config.systemPrompt) {
-    if (config.provider === "anthropic") {
-      messages.push({
-        role: "assistant" as const,
-        content: config.systemPrompt,
-      });
-    } else {
-      messages.push({
-        role: "system" as const,
-        content: config.systemPrompt,
-      });
-    }
-  }
-
-  if (config.provider === "anthropic") {
-    messages.push({
-      role: "user" as const,
-      content: prompt,
-    });
-  } else {
-    messages.push({
-      role: "user" as const,
-      content: prompt,
-    });
-  }
-
-  return messages;
-}
-
-async function makeProviderRequest(client: OpenAI | Anthropic, messages: any[], config: ModelConfig) {
-  if (config.provider === "anthropic") {
-    const response = await (client as Anthropic).messages.create({
-      model: config.model,
-      messages: messages,
-      max_tokens: config.maxTokens,
-      temperature: config.temperature,
-    });
-    return response.content[0].text;
-  } else {
-    const response = await (client as OpenAI).chat.completions.create({
-      model: config.model,
-      messages: messages,
-      temperature: config.temperature,
-      max_tokens: config.maxTokens,
-      //response_format: { type: "json_object" }, // Removed response_format for non-JSON responses
-    });
-    return response.choices[0].message.content || "";
   }
 }
 
@@ -182,7 +131,7 @@ export async function generateVariations(
 ): Promise<string[]> {
   const jsonFormat = config.provider === "anthropic"
     ? 'Format your response as a JSON string with this exact structure: { "variations": ["variation1", "variation2", "variation3"] }'
-    : 'Return a JSON object with this exact structure: { "variations": ["variation1", "variation2", "variation3"] }';
+    : 'Return a JSON object with exactly this structure: { "variations": ["variation1", "variation2", "variation3"] }';
 
   const prompt = `Generate ${count} detailed variations of the following meta prompt:
 
@@ -201,24 +150,18 @@ For each variation:
 
 ${jsonFormat}`;
 
-  const client = getClient(config);
   try {
+    const client = getClient(config);
     const messages = formatMessagesForProvider(prompt, config);
-    const content = await makeProviderRequest(client, messages, config);
+    const content = await makeProviderRequest(client, messages, config, true);
 
-    try {
-      const result = JSON.parse(content);
-      if (!Array.isArray(result.variations)) {
-        console.error("Invalid response format - variations is not an array", result);
-        return [];
-      }
-      return result.variations;
-    } catch (error) {
-      console.error("JSON Parse Error:", error, content);
-      return [];
+    const result = JSON.parse(content);
+    if (!Array.isArray(result.variations)) {
+      throw new Error("Invalid response format - variations is not an array");
     }
+    return result.variations;
   } catch (error) {
-    handleApiError(error);
+    console.error("Variation generation error:", error);
     return [];
   }
 }
@@ -246,13 +189,13 @@ ${Object.keys(criteria).join(", ")}
 
 ${jsonFormat}`;
 
-  const client = getClient(config);
   try {
+    const client = getClient(config);
     const messages = formatMessagesForProvider(evaluationPrompt, config);
-    const content = await makeProviderRequest(client, messages, config);
+    const content = await makeProviderRequest(client, messages, config, true);
     return JSON.parse(content);
   } catch (error) {
-    handleApiError(error);
+    console.error("Evaluation error:", error);
     return {};
   }
 }
@@ -283,19 +226,15 @@ For each test case:
 
 ${jsonFormat}`;
 
-  const client = getClient(config);
   try {
+    const client = getClient(config);
     const messages = formatMessagesForProvider(prompt, config);
-    const content = await makeProviderRequest(client, messages, config);
-
-    if (!content) {
-      return [];
-    }
+    const content = await makeProviderRequest(client, messages, config, true);
 
     const result = JSON.parse(content);
     return result.testCases || [];
   } catch (error) {
-    console.error("Test Case Generation Error:", error);
+    console.error("Test case generation error:", error);
     return [];
   }
 }
