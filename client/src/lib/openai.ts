@@ -20,7 +20,6 @@ function getClient(config: ModelConfig) {
     case "anthropic":
       return new Anthropic({
         apiKey: config.apiKey,
-        dangerouslyAllowBrowser: true,
       });
     case "groq":
       // Groq uses OpenAI's API format
@@ -71,58 +70,16 @@ function handleApiError(error: any) {
   throw error;
 }
 
-export async function generateMetaPrompt(
-  input: MetaPromptInput,
-  config: ModelConfig,
-): Promise<string> {
-  const prompt = `Given this request for an AI assistant: "${input.baseInput}"
-
-Create a comprehensive meta-prompt that includes:
-1. Extracted AI Role
-2. Appropriate Tone & Style
-3. Core Functionality
-4. Necessary Constraints
-5. Edge Cases to Handle
-
-Format the response as a detailed prompt with clear sections for:
-- Core Behavioral Guidelines
-- Communication Style
-- Response Structure
-- Constraints & Safety
-- Example Responses`;
-
-  try {
-    const client = getClient(config);
-    const messages = formatMessages(prompt, config);
-
-    if (config.provider === "anthropic") {
-      const response = await (client as Anthropic).messages.create({
-        model: config.model,
-        messages,
-        max_tokens: config.maxTokens,
-        temperature: config.temperature,
-      });
-      return response.content[0].text;
-    } else {
-      const response = await (client as OpenAI).chat.completions.create({
-        model: config.model,
-        messages,
-        temperature: config.temperature,
-        max_tokens: config.maxTokens,
-      });
-      return response.choices[0].message.content || "";
-    }
-  } catch (error) {
-    handleApiError(error);
-    return "";
-  }
-}
-
 export async function generateVariations(
   metaPrompt: string,
   count: number = 3,
   config: ModelConfig,
 ): Promise<string[]> {
+  // Add explicit JSON format instruction based on provider
+  const jsonInstruction = config.provider === "anthropic" 
+    ? "Format your response as a JSON string with this exact structure: { \"variations\": [\"variation1\", \"variation2\", \"variation3\"] }"
+    : "Return a JSON object with exactly this structure: { \"variations\": [\"variation1\", \"variation2\", \"variation3\"] }";
+
   const prompt = `Generate ${count} detailed variations of the following meta prompt:
 
 ${metaPrompt}
@@ -138,9 +95,7 @@ For each variation:
 3. Each variation should be comprehensive and self-contained
 4. Aim for at least 250 words per variation
 
-${config.provider === "anthropic" ? 
-  "Return the variations as a valid JSON string with this structure: { \"variations\": [\"First variation\", \"Second variation\", \"Third variation\"] }"
-  : ""}`;
+${jsonInstruction}`;
 
   const client = getClient(config);
   try {
@@ -188,6 +143,10 @@ export async function evaluatePrompt(
   criteria: Record<string, number>,
   config: ModelConfig,
 ): Promise<Record<string, number>> {
+  const jsonInstruction = config.provider === "anthropic"
+    ? "Format your response as a JSON object where keys are criteria names and values are scores between 0 and 1."
+    : "Return a JSON object where keys are criteria names and values are scores between 0 and 1.";
+
   const evaluationPrompt = `Evaluate the following prompt against the test case using the given criteria:
 
 Prompt:
@@ -199,9 +158,7 @@ ${testCase}
 Criteria:
 ${Object.keys(criteria).join(", ")}
 
-${config.provider === "anthropic" ? 
-  "Rate each criterion from 0 to 1 and return as a valid JSON object where keys are criteria names and values are scores." 
-  : "Rate each criterion from 0 to 1 and return as JSON."}`;
+${jsonInstruction}`;
 
   const client = getClient(config);
   try {
@@ -244,6 +201,10 @@ export async function generateTestCases(
     criteria: Record<string, number>;
   }[]
 > {
+  const jsonInstruction = config.provider === "anthropic"
+    ? "Format your response as a JSON string with this structure: { \"testCases\": [{ \"input\": \"test scenario\", \"criteria\": { \"criterionName\": 0.8 } }] }"
+    : "Return a JSON object with this structure: { \"testCases\": [{ \"input\": \"test scenario\", \"criteria\": { \"criterionName\": 0.8 } }] }";
+
   const prompt = `Given this context:
 Base Input: "${baseInput}"
 Meta Prompt: "${metaPrompt}"
@@ -255,9 +216,7 @@ For each test case:
 1. Create a challenging input scenario
 2. Define evaluation criteria with weights (0-1) based on what's important for this specific use case
 
-${config.provider === "anthropic" ? 
-  "Return the test cases as a valid JSON string with this structure: { \"testCases\": [{ \"input\": \"test scenario\", \"criteria\": { \"criterionName\": 0.8 } }] }"
-  : "Return ONLY a JSON object with this structure: { \"testCases\": [{ \"input\": \"test scenario\", \"criteria\": { \"criterionName\": 0.8 } }] }"}`;
+${jsonInstruction}`;
 
   const client = getClient(config);
   try {
@@ -291,5 +250,52 @@ ${config.provider === "anthropic" ?
   } catch (error) {
     console.error("Test Case Generation Error:", error);
     return [];
+  }
+}
+
+export async function generateMetaPrompt(
+  input: MetaPromptInput,
+  config: ModelConfig,
+): Promise<string> {
+  const prompt = `Given this request for an AI assistant: "${input.baseInput}"
+
+Create a comprehensive meta-prompt that includes:
+1. Extracted AI Role
+2. Appropriate Tone & Style
+3. Core Functionality
+4. Necessary Constraints
+5. Edge Cases to Handle
+
+Format the response as a detailed prompt with clear sections for:
+- Core Behavioral Guidelines
+- Communication Style
+- Response Structure
+- Constraints & Safety
+- Example Responses`;
+
+  try {
+    const client = getClient(config);
+    const messages = formatMessages(prompt, config);
+
+    if (config.provider === "anthropic") {
+      const response = await (client as Anthropic).messages.create({
+        model: config.model,
+        messages,
+        max_tokens: config.maxTokens,
+        temperature: config.temperature,
+      });
+      return response.content[0].text;
+    } else {
+      const response = await (client as OpenAI).chat.completions.create({
+        model: config.model,
+        messages,
+        temperature: config.temperature,
+        max_tokens: config.maxTokens,
+      });
+      return response.choices[0].message.content || "";
+    }
+  } catch (error) {
+    handleApiError(error);
+    return "";
   }
 }
