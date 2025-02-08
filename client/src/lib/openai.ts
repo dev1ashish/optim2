@@ -1,6 +1,5 @@
 import OpenAI from "openai";
 import Anthropic from '@anthropic-ai/sdk';
-import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } from "@google/generative-ai";
 import { type MetaPromptInput } from "@shared/schema";
 import type { ModelConfig } from "@/components/settings/model-settings-section";
 
@@ -28,8 +27,6 @@ function getClient(config: ModelConfig) {
         baseURL: "https://api.groq.com/v1",
         dangerouslyAllowBrowser: true
       });
-    case "google":
-      return new GoogleGenerativeAI(config.apiKey);
     default:
       throw new Error(`Unsupported provider: ${config.provider}`);
   }
@@ -69,45 +66,6 @@ function handleApiError(error: any) {
   throw error;
 }
 
-async function generateWithGoogle(prompt: string, config: ModelConfig) {
-  const genAI = getClient(config) as GoogleGenerativeAI;
-  const model = genAI.getGenerativeModel({ model: config.model });
-
-  try {
-    const result = await model.generateContent({
-      contents: [
-        { role: "user", parts: [{ text: config.systemPrompt || "" }] },
-        { role: "user", parts: [{ text: prompt }] }
-      ],
-      generationConfig: {
-        temperature: config.temperature,
-        maxOutputTokens: config.maxTokens,
-        candidateCount: config.candidateCount,
-      },
-      safetySettings: config.safetySettings?.map(setting => ({
-        category: setting.category as HarmCategory,
-        threshold: setting.threshold as HarmBlockThreshold
-      }))
-    });
-
-    console.log("Google API Response:", result);
-
-    const response = await result.response;
-    const text = response.text();
-
-    // Split the response by numbered items
-    const variations = text.split(/\d+\.\s+/)
-      .map(item => item.trim())
-      .filter(item => item.length > 0);
-
-    console.log("Parsed variations:", variations);
-    return variations;
-  } catch (error) {
-    console.error("Google API Error:", error);
-    throw error;
-  }
-}
-
 // the newest OpenAI model is "gpt-4o" which was released May 13, 2024. do not change this unless explicitly requested by the user
 export async function generateMetaPrompt(
   input: MetaPromptInput,
@@ -130,12 +88,6 @@ Format the response as a detailed prompt with clear sections for:
 - Example Responses`;
 
   try {
-    if (config.provider === "google") {
-      const response = await generateWithGoogle(prompt, config);
-      console.log("Google Meta Prompt Response:", response);
-      return response[0] || ""; // Access the first element of the array
-    }
-
     const client = getClient(config);
     const messages = formatMessages(prompt, config);
 
@@ -155,13 +107,11 @@ Format the response as a detailed prompt with clear sections for:
         model: config.model,
         messages,
         temperature: config.temperature,
-        max_tokens: config.maxTokens,
-        response_format: config.responseFormat
+        max_tokens: config.maxTokens
       });
       return response.choices[0].message.content || "";
     }
   } catch (error) {
-    console.error("Meta Prompt Generation Error:", error);
     handleApiError(error);
     return "";
   }
@@ -172,7 +122,7 @@ export async function generateVariations(
   count: number = 3,
   config: ModelConfig
 ): Promise<string[]> {
-  const variationPrompt = `Generate exactly ${count} detailed variations of the following prompt:
+  const prompt = `Generate exactly ${count} detailed variations of the following meta prompt:
 
 ${metaPrompt}
 
@@ -187,19 +137,18 @@ For each variation:
 3. Each variation should be comprehensive and self-contained
 4. Aim for at least 250 words per variation
 
-Return ONLY the variations in a numbered list format, with exactly ${count} variations.`;
+Return ONLY a JSON object with this exact structure, containing exactly ${count} variations:
+{
+  "variations": [
+    "First complete variation text here",
+    "Second complete variation text here",
 
+  ]
+}
+Important: The response must contain exactly ${count} variations, no more and no less.`;
+
+  const client = getClient(config);
   try {
-    if (config.provider === "google") {
-      const variations = await generateWithGoogle(variationPrompt, config);
-      console.log("Google Variations:", variations);
-      if (!Array.isArray(variations)) {
-        throw new Error("Invalid response format from Google API");
-      }
-      return variations.slice(0, count);
-    }
-
-    const client = getClient(config);
     let content: string;
 
     if (config.provider === "anthropic") {
@@ -207,7 +156,7 @@ Return ONLY the variations in a numbered list format, with exactly ${count} vari
         model: config.model,
         max_tokens: Math.max(config.maxTokens, 4096),
         temperature: config.temperature,
-        messages: formatMessages(variationPrompt, config).map(msg => ({
+        messages: formatMessages(prompt, config).map(msg => ({
           role: msg.role === "system" ? "assistant" : msg.role,
           content: msg.content
         }))
@@ -216,7 +165,7 @@ Return ONLY the variations in a numbered list format, with exactly ${count} vari
     } else {
       const response = await (client as OpenAI).chat.completions.create({
         model: config.model,
-        messages: formatMessages(variationPrompt, config),
+        messages: formatMessages(prompt, config),
         temperature: config.temperature,
         max_tokens: Math.max(config.maxTokens, 4096),
         response_format: { type: "json_object" }
@@ -225,10 +174,15 @@ Return ONLY the variations in a numbered list format, with exactly ${count} vari
     }
 
     try {
-      const result = JSON.parse(content.trim());
+      const result = JSON.parse(content);
       if (!Array.isArray(result.variations)) {
         console.error("Invalid response format - variations is not an array");
         return [];
+      }
+
+      // Ensure we have exactly the requested number of variations
+      if (result.variations.length !== count) {
+        console.warn(`Expected ${count} variations but received ${result.variations.length}`);
       }
 
       return result.variations
@@ -324,7 +278,7 @@ export async function generateTestCases(
 ): Promise<{
   input: string;
   criteria: Record<string, number>;
-}>[] {
+}[]> {
   const prompt = `Given this context:
 Base Input: "${baseInput}"
 Meta Prompt: "${metaPrompt}"
@@ -347,7 +301,8 @@ Return ONLY a JSON object with this structure:
       }
     }
   ]
-}`;
+}
+`;
 
   const client = getClient(config);
   try {
