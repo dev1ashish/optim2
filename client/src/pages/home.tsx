@@ -14,7 +14,8 @@ import type { ModelConfig } from "@/components/settings/model-settings-section";
 const MAX_TOKENS = {
   openai: 4096,  // For GPT-4
   anthropic: 100000,  // For Claude 3
-  groq: 4096  // For LLaMA2
+  groq: 4096,  // For LLaMA2
+  google: 32768  // For Gemini Pro
 };
 
 const defaultModelConfig: ModelConfig = {
@@ -35,7 +36,10 @@ const defaultModelConfig: ModelConfig = {
   // Anthropic specific
   topK: undefined,
   // Groq specific
-  stopSequences: undefined
+  stopSequences: undefined,
+  // Google specific
+  candidateCount: undefined,
+  safetySettings: undefined
 };
 
 const defaultVariationConfig: ModelConfig = {

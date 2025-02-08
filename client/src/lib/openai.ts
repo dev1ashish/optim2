@@ -1,5 +1,6 @@
 import OpenAI from "openai";
 import Anthropic from '@anthropic-ai/sdk';
+import { GoogleGenerativeAI } from "@google/generative-ai";
 import { type MetaPromptInput } from "@shared/schema";
 import type { ModelConfig } from "@/components/settings/model-settings-section";
 
@@ -27,6 +28,8 @@ function getClient(config: ModelConfig) {
         baseURL: "https://api.groq.com/v1",
         dangerouslyAllowBrowser: true
       });
+    case "google":
+      return new GoogleGenerativeAI(config.apiKey);
     default:
       throw new Error(`Unsupported provider: ${config.provider}`);
   }
@@ -66,6 +69,24 @@ function handleApiError(error: any) {
   throw error;
 }
 
+async function generateWithGoogle(prompt: string, config: ModelConfig) {
+  const genAI = getClient(config) as GoogleGenerativeAI;
+  const model = genAI.getGenerativeModel({ model: config.model });
+
+  const result = await model.generateContent({
+    contents: [{ role: "user", parts: [{ text: prompt }] }],
+    generationConfig: {
+      temperature: config.temperature,
+      maxOutputTokens: config.maxTokens,
+      candidateCount: config.candidateCount,
+    },
+    safetySettings: config.safetySettings
+  });
+
+  const response = await result.response;
+  return response.text();
+}
+
 // the newest OpenAI model is "gpt-4o" which was released May 13, 2024. do not change this unless explicitly requested by the user
 export async function generateMetaPrompt(
   input: MetaPromptInput,
@@ -88,6 +109,10 @@ Format the response as a detailed prompt with clear sections for:
 - Example Responses`;
 
   try {
+    if (config.provider === "google") {
+      return await generateWithGoogle(prompt, config);
+    }
+
     const client = getClient(config);
     const messages = formatMessages(prompt, config);
 
@@ -107,7 +132,8 @@ Format the response as a detailed prompt with clear sections for:
         model: config.model,
         messages,
         temperature: config.temperature,
-        max_tokens: config.maxTokens
+        max_tokens: config.maxTokens,
+        response_format: config.responseFormat
       });
       return response.choices[0].message.content || "";
     }
@@ -301,8 +327,7 @@ Return ONLY a JSON object with this structure:
       }
     }
   ]
-}
-`;
+}`;
 
   const client = getClient(config);
   try {

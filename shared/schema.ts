@@ -42,12 +42,13 @@ export const evaluationCriterionSchema = z.object({
   systemPrompt: z.string().min(1, "System prompt is required"),
   weight: z.number().min(0).max(1).default(1),
   modelConfig: z.object({
-    provider: z.enum(["openai", "anthropic", "groq"]),
+    provider: z.enum(["openai", "anthropic", "groq", "google"]),
     model: z.string(),
     temperature: z.number().min(0).max(2),
     maxTokens: z.number().min(1),
     apiKey: z.string(),
     systemPrompt: z.string(),
+    // OpenAI specific
     topP: z.number().optional(),
     frequencyPenalty: z.number().optional(),
     presencePenalty: z.number().optional(),
@@ -55,8 +56,16 @@ export const evaluationCriterionSchema = z.object({
     seed: z.number().optional(),
     tools: z.array(z.any()).optional(),
     toolChoice: z.string().optional(),
+    // Anthropic specific
     topK: z.number().optional(),
-    stopSequences: z.array(z.string()).optional()
+    // Groq specific
+    stopSequences: z.array(z.string()).optional(),
+    // Google specific
+    candidateCount: z.number().optional(),
+    safetySettings: z.array(z.object({
+      category: z.string(),
+      threshold: z.string()
+    })).optional()
   }).optional()
 });
 
