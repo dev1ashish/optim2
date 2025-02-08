@@ -1,6 +1,6 @@
 import OpenAI from "openai";
 import Anthropic from '@anthropic-ai/sdk';
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GoogleGenerativeAI, HarmCategory, HarmBlockThreshold } from "@google/generative-ai";
 import { type MetaPromptInput } from "@shared/schema";
 import type { ModelConfig } from "@/components/settings/model-settings-section";
 
@@ -85,14 +85,27 @@ async function generateWithGoogle(prompt: string, config: ModelConfig) {
         candidateCount: config.candidateCount,
       },
       safetySettings: config.safetySettings?.map(setting => ({
-        category: setting.category,
-        threshold: setting.threshold
+        category: setting.category as HarmCategory,
+        threshold: setting.threshold as HarmBlockThreshold
       }))
     });
 
     console.log("Google API Response:", result);
+
+    // Handle the response
     const response = await result.response;
-    return response.text();
+    const text = response.text();
+
+    // Try to parse as JSON first
+    try {
+      const jsonResponse = JSON.parse(text);
+      if (jsonResponse.variations && Array.isArray(jsonResponse.variations)) {
+        return jsonResponse.variations;
+      }
+    } catch (e) {
+      // If not JSON or wrong format, wrap the text in an array
+      return [text];
+    }
   } catch (error) {
     console.error("Google API Error:", error);
     throw error;
@@ -124,7 +137,7 @@ Format the response as a detailed prompt with clear sections for:
     if (config.provider === "google") {
       const response = await generateWithGoogle(prompt, config);
       console.log("Google Meta Prompt Response:", response);
-      return response || "";
+      return response[0] || ""; // Access the first element of the array
     }
 
     const client = getClient(config);
@@ -163,7 +176,7 @@ export async function generateVariations(
   count: number = 3,
   config: ModelConfig
 ): Promise<string[]> {
-  const prompt = `Generate exactly ${count} detailed variations of the following meta prompt:
+  const variationPrompt = `Generate exactly ${count} detailed variations of the following prompt:
 
 ${metaPrompt}
 
@@ -178,22 +191,16 @@ For each variation:
 3. Each variation should be comprehensive and self-contained
 4. Aim for at least 250 words per variation
 
-Return ONLY a JSON object with this exact structure, containing exactly ${count} variations:
-{
-  "variations": [
-    "First complete variation text here",
-    "Second complete variation text here"
-  ]
-}
-Important: The response must contain exactly ${count} variations, no more and no less.`;
+Return ONLY the variations in a numbered list format, with exactly ${count} variations.`;
 
   try {
     if (config.provider === "google") {
-      const result = await generateWithGoogle(prompt, config);
-      if (!result.variations || !Array.isArray(result.variations)) {
+      const variations = await generateWithGoogle(variationPrompt, config);
+      console.log("Google Variations:", variations);
+      if (!Array.isArray(variations)) {
         throw new Error("Invalid response format from Google API");
       }
-      return result.variations.slice(0, count);
+      return variations.slice(0, count);
     }
 
     const client = getClient(config);
@@ -204,7 +211,7 @@ Important: The response must contain exactly ${count} variations, no more and no
         model: config.model,
         max_tokens: Math.max(config.maxTokens, 4096),
         temperature: config.temperature,
-        messages: formatMessages(prompt, config).map(msg => ({
+        messages: formatMessages(variationPrompt, config).map(msg => ({
           role: msg.role === "system" ? "assistant" : msg.role,
           content: msg.content
         }))
@@ -213,7 +220,7 @@ Important: The response must contain exactly ${count} variations, no more and no
     } else {
       const response = await (client as OpenAI).chat.completions.create({
         model: config.model,
-        messages: formatMessages(prompt, config),
+        messages: formatMessages(variationPrompt, config),
         temperature: config.temperature,
         max_tokens: Math.max(config.maxTokens, 4096),
         response_format: { type: "json_object" }
@@ -226,11 +233,6 @@ Important: The response must contain exactly ${count} variations, no more and no
       if (!Array.isArray(result.variations)) {
         console.error("Invalid response format - variations is not an array");
         return [];
-      }
-
-      // Ensure we have exactly the requested number of variations
-      if (result.variations.length !== count) {
-        console.warn(`Expected ${count} variations but received ${result.variations.length}`);
       }
 
       return result.variations
