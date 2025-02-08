@@ -1,4 +1,4 @@
-import { pgTable, text, serial, integer, json, timestamp } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, json, timestamp } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -7,7 +7,7 @@ export const prompts = pgTable("prompts", {
   baseInput: text("base_input").notNull(),
   metaPrompt: text("meta_prompt").notNull(),
   variations: json("variations").notNull().$type<string[]>(),
-  testCases: json("test_cases").notNull().$type<{input: string, criteria: Record<string, number>}[]>(),
+  testCases: json("test_cases").notNull().$type<{input: string}[]>(),
   evaluationResults: json("evaluation_results").notNull().$type<Record<string, number>[]>(),
   createdAt: timestamp("created_at").defaultNow(),
 });
@@ -27,9 +27,9 @@ export const metaPromptSchema = z.object({
 
 export type MetaPromptInput = z.infer<typeof metaPromptSchema>;
 
+// Simplified test case schema - removed criteria as it will be handled in evaluation step
 export const testCaseSchema = z.object({
-  input: z.string().min(1, "Test input is required"),
-  criteria: z.record(z.number().min(0).max(1))
+  input: z.string().min(1, "Test input is required")
 });
 
 export type TestCase = z.infer<typeof testCaseSchema>;

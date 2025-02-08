@@ -11,13 +11,31 @@ import { TestCreator } from "@/components/test-creator";
 import type { MetaPromptInput, TestCase } from "@shared/schema";
 import type { ModelConfig } from "@/components/settings/model-settings-section";
 
+const MAX_TOKENS = {
+  openai: 4096,  // For GPT-4
+  anthropic: 100000,  // For Claude 3
+  groq: 4096  // For LLaMA2
+};
+
 const defaultModelConfig: ModelConfig = {
   provider: "openai",
   model: "gpt-4o",
   temperature: 0.7,
-  maxTokens: 2048,
+  maxTokens: MAX_TOKENS.openai,
+  topP: 1,
+  frequencyPenalty: 0,
+  presencePenalty: 0,
   apiKey: "",
-  systemPrompt: "You are a professional AI prompt engineer, skilled at creating detailed and effective prompts. Your goal is to create clear, structured prompts that guide AI models to provide high-quality responses."
+  systemPrompt: "You are a professional AI prompt engineer, skilled at creating detailed and effective prompts. Your goal is to create clear, structured prompts that guide AI models to provide high-quality responses.",
+  // OpenAI specific
+  responseFormat: { type: "json_object" },
+  seed: undefined,
+  tools: undefined,
+  toolChoice: undefined,
+  // Anthropic specific
+  topK: undefined,
+  // Groq specific
+  stopSequences: undefined
 };
 
 const defaultVariationConfig: ModelConfig = {
@@ -27,7 +45,8 @@ const defaultVariationConfig: ModelConfig = {
 
 const defaultTestConfig: ModelConfig = {
   ...defaultModelConfig,
-  systemPrompt: "You are a test case generator for AI prompts. Your goal is to create diverse and challenging test cases that effectively evaluate the performance of prompt variations across different scenarios and edge cases."
+  temperature: 0.8, // Slightly higher for more diverse test cases
+  systemPrompt: "You are a test case generator for AI prompts. Create diverse and challenging test scenarios that cover edge cases, common scenarios, and potential failure modes. Focus on generating test inputs that will help evaluate the effectiveness of different prompt variations."
 };
 
 const defaultEvaluationConfig: ModelConfig = {

@@ -21,7 +21,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Settings2, Upload, Trash2, Edit2, Plus } from "lucide-react";
+import { Settings2, Upload, Trash2, Edit2 } from "lucide-react";
 import { Form, FormControl, FormField, FormItem, FormMessage } from "@/components/ui/form";
 import { testCaseSchema, type TestCase } from "@shared/schema";
 import { ModelSettingsSection, type ModelConfig } from "@/components/settings/model-settings-section";
@@ -55,18 +55,12 @@ export function TestCreator({
 }: TestCreatorProps) {
   const [showSettings, setShowSettings] = useState(false);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
-  const [criteria, setCriteria] = useState<string[]>([
-    "Clarity",
-    "Relevance",
-    "Completeness"
-  ]);
-  const [newCriterion, setNewCriterion] = useState("");
 
   const form = useForm<TestCase>({
     resolver: zodResolver(testCaseSchema),
     defaultValues: {
       input: "",
-      criteria: Object.fromEntries(criteria.map(c => [c, 0]))
+      criteria: {}
     }
   });
 
@@ -90,19 +84,12 @@ export function TestCreator({
         lines.forEach(line => {
           const testCase: TestCase = {
             input: line,
-            criteria: Object.fromEntries(criteria.map(c => [c, 0.5]))
+            criteria: {}
           };
           onAddTest(testCase);
         });
       };
       reader.readAsText(file);
-    }
-  };
-
-  const addCriterion = () => {
-    if (newCriterion && !criteria.includes(newCriterion)) {
-      setCriteria([...criteria, newCriterion]);
-      setNewCriterion("");
     }
   };
 
@@ -131,7 +118,7 @@ export function TestCreator({
               onClick={() => document.getElementById('file-upload')?.click()}
             >
               <Upload className="h-4 w-4 mr-2" />
-              Upload
+              Upload Test Cases
             </Button>
           </div>
           <Dialog open={showSettings} onOpenChange={setShowSettings}>
@@ -142,46 +129,17 @@ export function TestCreator({
             </DialogTrigger>
             <DialogContent>
               <DialogHeader>
-                <DialogTitle>Test Case Settings</DialogTitle>
+                <DialogTitle>Test Generation Settings</DialogTitle>
               </DialogHeader>
-              <div className="space-y-4">
-                <ModelSettingsSection
-                  title="Test Generation Settings"
-                  description="Configure the model for generating test cases"
-                  config={modelConfig}
-                  onChange={onModelConfigChange}
-                  defaultConfig={defaultConfig}
-                  useDefaultSettings={useDefaultSettings}
-                  onUseDefaultSettingsChange={onUseDefaultSettingsChange}
-                />
-                <div className="flex gap-4">
-                  <div className="flex-1">
-                    <Label>New Criterion</Label>
-                    <Input
-                      value={newCriterion}
-                      onChange={(e) => setNewCriterion(e.target.value)}
-                      placeholder="Enter new evaluation criterion"
-                    />
-                  </div>
-                  <Button 
-                    onClick={addCriterion}
-                    className="mt-6"
-                  >
-                    <Plus className="h-4 w-4 mr-2" />
-                    Add
-                  </Button>
-                </div>
-                <div>
-                  <Label>Current Criteria</Label>
-                  <div className="mt-2 space-y-2">
-                    {criteria.map((criterion) => (
-                      <div key={criterion} className="flex items-center gap-2">
-                        <span>{criterion}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              </div>
+              <ModelSettingsSection
+                title="Test Generation Settings"
+                description="Configure the model for generating test cases"
+                config={modelConfig}
+                onChange={onModelConfigChange}
+                defaultConfig={defaultConfig}
+                useDefaultSettings={useDefaultSettings}
+                onUseDefaultSettingsChange={onUseDefaultSettingsChange}
+              />
             </DialogContent>
           </Dialog>
         </div>
@@ -194,6 +152,7 @@ export function TestCreator({
             name="input"
             render={({ field }) => (
               <FormItem>
+                <Label>Test Case Input</Label>
                 <FormControl>
                   <Textarea
                     {...field}
@@ -204,45 +163,6 @@ export function TestCreator({
               </FormItem>
             )}
           />
-
-          <div>
-            <Label>Criteria Weights</Label>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Criterion</TableHead>
-                  <TableHead>Weight (0-1)</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {criteria.map((criterion) => (
-                  <TableRow key={criterion}>
-                    <TableCell>{criterion}</TableCell>
-                    <TableCell>
-                      <FormField
-                        control={form.control}
-                        name={`criteria.${criterion}`}
-                        render={({ field }) => (
-                          <FormItem>
-                            <FormControl>
-                              <Input
-                                type="number"
-                                step="0.1"
-                                min="0"
-                                max="1"
-                                {...field}
-                              />
-                            </FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )}
-                      />
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
 
           <Button type="submit">
             {editingIndex !== null ? "Update Test Case" : "Add Test Case"}
@@ -256,8 +176,7 @@ export function TestCreator({
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Input</TableHead>
-                <TableHead>Criteria</TableHead>
+                <TableHead>Test Input</TableHead>
                 <TableHead>Actions</TableHead>
               </TableRow>
             </TableHeader>
@@ -265,13 +184,6 @@ export function TestCreator({
               {testCases.map((test, index) => (
                 <TableRow key={index}>
                   <TableCell>{test.input}</TableCell>
-                  <TableCell>
-                    {Object.entries(test.criteria).map(([key, value]) => (
-                      <div key={key}>
-                        {key}: {value}
-                      </div>
-                    ))}
-                  </TableCell>
                   <TableCell>
                     <div className="flex gap-2">
                       <Button
