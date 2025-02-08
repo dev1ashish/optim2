@@ -25,6 +25,11 @@ const defaultVariationConfig: ModelConfig = {
   systemPrompt: "You are a creative prompt variation generator. Your goal is to create diverse but focused variations of the given prompt while maintaining the core functionality and objectives. Each variation should be unique but equally effective."
 };
 
+const defaultTestConfig: ModelConfig = {
+  ...defaultModelConfig,
+  systemPrompt: "You are a test case generator for AI prompts. Your goal is to create diverse and challenging test cases that effectively evaluate the performance of prompt variations across different scenarios and edge cases."
+};
+
 const defaultEvaluationConfig: ModelConfig = {
   ...defaultModelConfig,
   systemPrompt: "You are an objective prompt evaluator. Your task is to assess prompts based on given criteria with fairness and consistency. Provide numerical scores based on clear rubrics and objective analysis."
@@ -41,10 +46,12 @@ export default function Home() {
   // Model configs for each section
   const [metaPromptConfig, setMetaPromptConfig] = useState<ModelConfig>(defaultModelConfig);
   const [variationConfig, setVariationConfig] = useState<ModelConfig>(defaultVariationConfig);
+  const [testConfig, setTestConfig] = useState<ModelConfig>(defaultTestConfig);
   const [evaluationConfig, setEvaluationConfig] = useState<ModelConfig>(defaultEvaluationConfig);
 
   // Settings usage flags
   const [useDefaultForVariation, setUseDefaultForVariation] = useState(true);
+  const [useDefaultForTest, setUseDefaultForTest] = useState(true);
   const [useDefaultForEvaluation, setUseDefaultForEvaluation] = useState(true);
 
   const { toast } = useToast();
@@ -79,22 +86,35 @@ export default function Home() {
       if (!checkApiKey(config)) return;
 
       try {
-        // Clear previous results
-        setEvaluationResults([]);
-
-        // Generate variations
         const generatedVariations = await generateVariations(metaPrompt, count, config);
         if (!generatedVariations.length) {
           throw new Error("Failed to generate variations");
         }
         setVariations(generatedVariations);
         setCurrentStep(2);
+        return generatedVariations;
+      } catch (error) {
+        console.error("Variation generation error:", error);
+        toast({
+          title: "Error",
+          description: error instanceof Error ? error.message : "Failed to process variations",
+          variant: "destructive"
+        });
+        throw error;
+      }
+    }
+  });
 
-        // Generate test cases
+  const testGenerationMutation = useMutation({
+    mutationFn: async () => {
+      const config = useDefaultForTest ? metaPromptConfig : testConfig;
+      if (!checkApiKey(config)) return;
+
+      try {
         const generatedTests = await generateTestCases(
           baseInput,
           metaPrompt,
-          generatedVariations,
+          variations,
           config
         );
         if (!generatedTests.length) {
@@ -102,46 +122,12 @@ export default function Home() {
         }
         setTestCases(generatedTests);
         setCurrentStep(3);
-
-        // Run evaluations with potentially different config
-        const evalConfig = useDefaultForEvaluation ? metaPromptConfig : evaluationConfig;
-        const results = await Promise.all(
-          generatedVariations.map(async (variation) => {
-            const scores = await Promise.all(
-              generatedTests.map(async (test) => {
-                return evaluatePrompt(variation, test.input, test.criteria, evalConfig);
-              })
-            );
-
-            // Average the scores across all test cases
-            const averagedScores: Record<string, number> = {};
-            Object.keys(scores[0] || {}).forEach((criterion) => {
-              averagedScores[criterion] =
-                scores.reduce((sum, score) => sum + (score[criterion] || 0), 0) / scores.length;
-            });
-
-            return averagedScores;
-          })
-        );
-
-        setEvaluationResults(results);
-        setCurrentStep(4);
-
-        // Save results
-        await apiRequest("POST", "/api/prompts", {
-          baseInput,
-          metaPrompt,
-          variations: generatedVariations,
-          testCases: generatedTests,
-          evaluationResults: results
-        });
-
-        return generatedVariations;
+        return generatedTests;
       } catch (error) {
-        console.error("Variation generation error:", error);
+        console.error("Test case generation error:", error);
         toast({
           title: "Error",
-          description: error instanceof Error ? error.message : "Failed to process variations",
+          description: error instanceof Error ? error.message : "Failed to generate test cases",
           variant: "destructive"
         });
         throw error;
@@ -197,11 +183,26 @@ export default function Home() {
               setTestCases([...testCases, test]);
               setCurrentStep(3);
             }}
+            onGenerateTests={() => testGenerationMutation.mutateAsync()}
             testCases={testCases}
+            onRemoveTest={(index) => {
+              setTestCases(testCases.filter((_, i) => i !== index));
+            }}
+            onUpdateTest={(index, test) => {
+              const newTestCases = [...testCases];
+              newTestCases[index] = test;
+              setTestCases(newTestCases);
+            }}
+            modelConfig={useDefaultForTest ? metaPromptConfig : testConfig}
+            onModelConfigChange={setTestConfig}
+            defaultConfig={metaPromptConfig}
+            useDefaultSettings={useDefaultForTest}
+            onUseDefaultSettingsChange={setUseDefaultForTest}
+            isGenerating={testGenerationMutation.isPending}
           />
         )}
 
-        {evaluationResults.length > 0 && (
+        {testCases.length > 0 && (
           <ComparisonDashboard
             variations={variations}
             evaluationResults={evaluationResults}
