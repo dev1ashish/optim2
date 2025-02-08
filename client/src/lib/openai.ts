@@ -34,24 +34,24 @@ function getClient(config: ModelConfig) {
 
 // Helper function to format messages based on provider
 function formatMessages(prompt: string, config: ModelConfig) {
-  let messages = [];
+  const messages = [];
 
   if (config.systemPrompt) {
     if (config.provider === "anthropic") {
       messages.push({
-        role: "assistant",
+        role: "assistant" as const,
         content: config.systemPrompt
       });
     } else {
       messages.push({
-        role: "system",
+        role: "system" as const,
         content: config.systemPrompt
       });
     }
   }
 
   messages.push({
-    role: "user",
+    role: "user" as const,
     content: prompt
   });
 
@@ -94,11 +94,14 @@ Format the response as a detailed prompt with clear sections for:
     if (config.provider === "anthropic") {
       const response = await (client as Anthropic).messages.create({
         model: config.model,
-        messages,
         max_tokens: config.maxTokens,
         temperature: config.temperature,
+        messages: messages.map(msg => ({
+          role: msg.role === "system" ? "assistant" : msg.role,
+          content: msg.content
+        }))
       });
-      return response.content[0].text;
+      return response.content[0].text || "";
     } else {
       const response = await (client as OpenAI).chat.completions.create({
         model: config.model,
@@ -110,6 +113,7 @@ Format the response as a detailed prompt with clear sections for:
     }
   } catch (error) {
     handleApiError(error);
+    return "";
   }
 }
 
@@ -138,7 +142,7 @@ Return ONLY a JSON object with this exact structure, containing exactly ${count}
   "variations": [
     "First complete variation text here",
     "Second complete variation text here",
-    
+
   ]
 }
 Important: The response must contain exactly ${count} variations, no more and no less.`;
@@ -150,17 +154,20 @@ Important: The response must contain exactly ${count} variations, no more and no
     if (config.provider === "anthropic") {
       const response = await (client as Anthropic).messages.create({
         model: config.model,
-        messages: formatMessages(prompt, config),
-        max_tokens: Math.max(config.maxTokens, 4096), // Increased for larger responses
+        max_tokens: Math.max(config.maxTokens, 4096),
         temperature: config.temperature,
+        messages: formatMessages(prompt, config).map(msg => ({
+          role: msg.role === "system" ? "assistant" : msg.role,
+          content: msg.content
+        }))
       });
-      content = response.content[0].text;
+      content = response.content[0].text || "";
     } else {
       const response = await (client as OpenAI).chat.completions.create({
         model: config.model,
         messages: formatMessages(prompt, config),
         temperature: config.temperature,
-        max_tokens: Math.max(config.maxTokens, 4096), // Increased for larger responses
+        max_tokens: Math.max(config.maxTokens, 4096),
         response_format: { type: "json_object" }
       });
       content = response.choices[0].message.content || "";
@@ -179,8 +186,8 @@ Important: The response must contain exactly ${count} variations, no more and no
       }
 
       return result.variations
-        .slice(0, count) // Limit to requested count
-        .map(v => typeof v === 'string' ? v : JSON.stringify(v));
+        .slice(0, count)
+        .map((v: any) => typeof v === 'string' ? v : JSON.stringify(v));
     } catch (error) {
       console.error("JSON Parse Error:", error);
       return [];
@@ -217,11 +224,14 @@ Rate each criterion from 0 to 1 and return as JSON.`;
     if (config.provider === "anthropic") {
       const response = await (client as Anthropic).messages.create({
         model: config.model,
-        messages: formatMessages(evaluationPrompt, config),
         max_tokens: config.maxTokens,
         temperature: config.temperature,
+        messages: formatMessages(evaluationPrompt, config).map(msg => ({
+          role: msg.role === "system" ? "assistant" : msg.role,
+          content: msg.content
+        }))
       });
-      content = response.content[0].text;
+      content = response.content[0].text || "";
     } else {
       const response = await (client as OpenAI).chat.completions.create({
         model: config.model,
@@ -281,11 +291,14 @@ Return ONLY a JSON object with this structure:
     if (config.provider === "anthropic") {
       const response = await (client as Anthropic).messages.create({
         model: config.model,
-        messages: formatMessages(prompt, config),
         max_tokens: config.maxTokens,
         temperature: config.temperature,
+        messages: formatMessages(prompt, config).map(msg => ({
+          role: msg.role === "system" ? "assistant" : msg.role,
+          content: msg.content
+        }))
       });
-      content = response.content[0].text;
+      content = response.content[0].text || "";
     } else {
       const response = await (client as OpenAI).chat.completions.create({
         model: config.model,

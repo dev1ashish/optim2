@@ -38,13 +38,15 @@ export function ComparisonDashboard({
   useDefaultSettings,
   onUseDefaultSettingsChange
 }: ComparisonDashboardProps) {
-  const getAverageScore = (result: Record<string, number>) => {
+  const getAverageScore = (result: Record<string, number> | undefined) => {
+    if (!result) return 0;
     const values = Object.values(result);
+    if (values.length === 0) return 0;
     return values.reduce((a, b) => a + b, 0) / values.length;
   };
 
   // Calculate scores and create sorted index
-  const scores = evaluationResults.map((result, index) => ({
+  const scores = (evaluationResults || []).map((result, index) => ({
     index,
     score: getAverageScore(result),
     variation: variations[index],
@@ -68,6 +70,15 @@ export function ComparisonDashboard({
       default: return "text-gray-500";
     }
   };
+
+  if (!evaluationResults || evaluationResults.length === 0) {
+    return (
+      <Card className="p-6">
+        <h2 className="text-2xl font-bold">Results Dashboard</h2>
+        <p className="text-muted-foreground">No evaluation results available yet.</p>
+      </Card>
+    );
+  }
 
   return (
     <Card className="p-6 space-y-8">
@@ -100,7 +111,7 @@ export function ComparisonDashboard({
                 </div>
                 <div className="space-y-2">
                   <h4 className="font-medium text-sm">Metrics:</h4>
-                  {Object.entries(result.metrics).map(([key, value]) => (
+                  {Object.entries(result.metrics || {}).map(([key, value]) => (
                     <div key={key} className="flex justify-between text-sm">
                       <span>{key}:</span>
                       <span className="font-medium">{value.toFixed(2)}</span>
