@@ -301,8 +301,7 @@ Return ONLY a JSON object with this structure:
       }
     }
   ]
-}
-`;
+}`;
 
   const client = getClient(config);
   try {
@@ -339,5 +338,38 @@ Return ONLY a JSON object with this structure:
   } catch (error) {
     console.error("Test Case Generation Error:", error);
     return [];
+  }
+}
+
+export async function generateResponse(
+  prompt: string,
+  testCase: string,
+  config: ModelConfig
+): Promise<string> {
+  const client = getClient(config);
+  try {
+    if (config.provider === "anthropic") {
+      const response = await (client as Anthropic).messages.create({
+        model: config.model,
+        max_tokens: config.maxTokens,
+        temperature: config.temperature,
+        messages: formatMessages(`Given this prompt:\n${prompt}\n\nRespond to this input: ${testCase}`, config).map(msg => ({
+          role: msg.role === "system" ? "assistant" : msg.role,
+          content: msg.content
+        }))
+      });
+      return response.content[0].text || "";
+    } else {
+      const response = await (client as OpenAI).chat.completions.create({
+        model: config.model,
+        messages: formatMessages(`Given this prompt:\n${prompt}\n\nRespond to this input: ${testCase}`, config),
+        temperature: config.temperature,
+        max_tokens: config.maxTokens
+      });
+      return response.choices[0].message.content || "";
+    }
+  } catch (error) {
+    handleApiError(error);
+    return "";
   }
 }

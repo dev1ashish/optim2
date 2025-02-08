@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
-import { generateMetaPrompt, generateVariations, evaluatePrompt, generateTestCases } from "@/lib/openai";
+import { generateMetaPrompt, generateVariations, evaluatePrompt, generateTestCases, generateResponse } from "@/lib/openai"; // Added generateResponse import
 import { PromptChain } from "@/components/prompt-chain";
 import { MetaPromptForm } from "@/components/meta-prompt-form";
 import { VariationGenerator } from "@/components/variation-generator";
@@ -162,8 +162,16 @@ export default function Home() {
       const results: EvaluationResult[] = [];
       for (let varIndex = 0; varIndex < variations.length; varIndex++) {
         for (let testIndex = 0; testIndex < testCases.length; testIndex++) {
-          const response = await evaluatePrompt(
+          // First generate the actual response using the variation
+          const response = await generateResponse(
             variations[varIndex],
+            testCases[testIndex].input,
+            config
+          );
+
+          // Then evaluate the response
+          const scores = await evaluatePrompt(
+            response,
             testCases[testIndex].input,
             criteria.reduce((acc, c) => ({ ...acc, [c.id]: 0 }), {}),
             config
@@ -172,8 +180,8 @@ export default function Home() {
           results.push({
             variationIndex: varIndex,
             testCaseIndex: testIndex,
-            scores: response,
-            response: variations[varIndex] // This will be replaced with actual response in a real implementation
+            scores,
+            response
           });
         }
       }

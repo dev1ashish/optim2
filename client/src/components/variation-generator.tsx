@@ -88,17 +88,25 @@ export function VariationGenerator({
         </Button>
       </div>
 
-      <div className="space-y-4">
-        <Label>Generated Variations</Label>
-        {variations.map((variation, index) => (
-          <Textarea
-            key={index}
-            value={variation}
-            readOnly
-            className="mt-2"
-          />
-        ))}
-      </div>
+      {variations.length > 0 && (
+        <div className="space-y-4">
+          <Label>Generated Variations</Label>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {variations.map((variation, index) => (
+              <Card key={index} className="p-4">
+                <div className="mb-2">
+                  <Label className="text-sm font-medium">Variation {index + 1}</Label>
+                </div>
+                <Textarea
+                  value={variation}
+                  readOnly
+                  className="min-h-[200px] bg-secondary"
+                />
+              </Card>
+            ))}
+          </div>
+        </div>
+      )}
     </Card>
   );
 }
