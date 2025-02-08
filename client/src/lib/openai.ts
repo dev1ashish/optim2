@@ -204,18 +204,20 @@ export async function evaluatePrompt(
   criteria: Record<string, number>,
   config: ModelConfig
 ): Promise<Record<string, number>> {
-  const evaluationPrompt = `Evaluate the following prompt against the test case using the given criteria:
+  const evaluationPrompt = `You are an objective evaluator. Analyze the following response against a test case and provide numerical scores.
 
-Prompt:
-${prompt}
+Input Test Case: "${testCase}"
 
-Test Case:
-${testCase}
+Response to Evaluate: "${prompt}"
 
-Criteria:
-${Object.keys(criteria).join(", ")}
+Rate ONLY the following criteria, with scores from 0 to 1 (where 0 is poor and 1 is excellent).
+Required criteria: ${Object.keys(criteria).join(", ")}
 
-Rate each criterion from 0 to 1 and return as JSON.`;
+Return ONLY a JSON object with exactly these scores, no other text. Example format:
+{
+  "criterionName": 0.85,
+  "anotherCriterion": 0.92
+}`;
 
   const client = getClient(config);
   try {
@@ -243,10 +245,28 @@ Rate each criterion from 0 to 1 and return as JSON.`;
       content = response.choices[0].message.content || "";
     }
 
-    return JSON.parse(content);
+    try {
+      const result = JSON.parse(content.trim());
+      // Validate that all required criteria are present and scores are in range
+      const validatedScores: Record<string, number> = {};
+      Object.keys(criteria).forEach(key => {
+        const score = result[key];
+        if (typeof score !== 'number' || score < 0 || score > 1) {
+          validatedScores[key] = 0.5; // Default score if invalid
+        } else {
+          validatedScores[key] = score;
+        }
+      });
+      return validatedScores;
+    } catch (parseError) {
+      console.error("Failed to parse evaluation response:", parseError);
+      console.error("Raw content:", content);
+      // Return default scores if parsing fails
+      return Object.keys(criteria).reduce((acc, key) => ({ ...acc, [key]: 0.5 }), {});
+    }
   } catch (error) {
     handleApiError(error);
-    return {};
+    return Object.keys(criteria).reduce((acc, key) => ({ ...acc, [key]: 0 }), {});
   }
 }
 
