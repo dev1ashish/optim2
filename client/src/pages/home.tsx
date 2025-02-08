@@ -7,6 +7,7 @@ import { MetaPromptForm } from "@/components/meta-prompt-form";
 import { VariationGenerator } from "@/components/variation-generator";
 import { ComparisonDashboard } from "@/components/comparison-dashboard";
 import { useToast } from "@/hooks/use-toast";
+import { TestCreator } from "@/components/test-creator";
 import type { MetaPromptInput, TestCase } from "@shared/schema";
 import type { ModelConfig } from "@/components/settings/model-settings-section";
 
@@ -187,6 +188,16 @@ export default function Home() {
             defaultConfig={metaPromptConfig}
             useDefaultSettings={useDefaultForVariation}
             onUseDefaultSettingsChange={setUseDefaultForVariation}
+          />
+        )}
+
+        {variations.length > 0 && (
+          <TestCreator
+            onAddTest={(test) => {
+              setTestCases([...testCases, test]);
+              setCurrentStep(3);
+            }}
+            testCases={testCases}
           />
         )}
 
