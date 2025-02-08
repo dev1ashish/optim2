@@ -23,12 +23,30 @@ import { useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
 
 export interface ModelConfig {
-  provider: "openai" | "anthropic" | "groq";
+  provider: "openai" | "anthropic" | "groq" | "google";
   model: string;
   temperature: number;
   maxTokens: number;
   apiKey?: string;
   systemPrompt?: string;
+  // OpenAI specific
+  topP?: number;
+  frequencyPenalty?: number;
+  presencePenalty?: number;
+  responseFormat?: { type: string };
+  seed?: number;
+  tools?: any[];
+  toolChoice?: string;
+  // Anthropic specific
+  topK?: number;
+  // Groq specific
+  stopSequences?: string[];
+  // Google specific
+  candidateCount?: number;
+  safetySettings?: Array<{
+    category: string;
+    threshold: string;
+  }>;
 }
 
 interface ModelSettingsSectionProps {
@@ -43,8 +61,9 @@ interface ModelSettingsSectionProps {
 
 const MODEL_OPTIONS = {
   openai: ["gpt-4o", "gpt-4", "gpt-3.5-turbo"],
-  anthropic: ["claude-3-opus-20240229", "claude-3-5-sonnet-20241022", "claude-3-5-haiku-20241022"],
-  groq: ["mixtral-8x7b", "llama2-70b"]
+  anthropic: ["claude-3-opus-20240229", "claude-3-sonnet-20240229", "claude-3-haiku-20240229"],
+  groq: ["mixtral-8x7b", "llama2-70b"],
+  google: ["gemini-1.0-pro", "gemini-1.0-ultra", "gemini-1.0-pro-vision"]
 };
 
 export function ModelSettingsSection({ 
@@ -145,6 +164,7 @@ export function ModelSettingsSection({
                     <SelectItem value="openai">OpenAI</SelectItem>
                     <SelectItem value="anthropic">Anthropic</SelectItem>
                     <SelectItem value="groq">Groq</SelectItem>
+                    <SelectItem value="google">Google</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -192,9 +212,128 @@ export function ModelSettingsSection({
                     onChange({ ...config, maxTokens: parseInt(e.target.value) })
                   }
                   min={1}
-                  max={4096}
+                  max={100000}
                 />
               </div>
+
+              {/* OpenAI specific settings */}
+              {config.provider === "openai" && (
+                <>
+                  <div className="grid gap-2">
+                    <Label>Top P</Label>
+                    <Slider
+                      value={[config.topP || 1]}
+                      min={0}
+                      max={1}
+                      step={0.1}
+                      onValueChange={([value]) =>
+                        onChange({ ...config, topP: value })
+                      }
+                    />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label>Frequency Penalty</Label>
+                    <Slider
+                      value={[config.frequencyPenalty || 0]}
+                      min={-2}
+                      max={2}
+                      step={0.1}
+                      onValueChange={([value]) =>
+                        onChange({ ...config, frequencyPenalty: value })
+                      }
+                    />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label>Presence Penalty</Label>
+                    <Slider
+                      value={[config.presencePenalty || 0]}
+                      min={-2}
+                      max={2}
+                      step={0.1}
+                      onValueChange={([value]) =>
+                        onChange({ ...config, presencePenalty: value })
+                      }
+                    />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label>Seed</Label>
+                    <Input
+                      type="number"
+                      value={config.seed || ''}
+                      onChange={(e) =>
+                        onChange({ ...config, seed: parseInt(e.target.value) || undefined })
+                      }
+                      placeholder="Optional seed for deterministic results"
+                    />
+                  </div>
+                </>
+              )}
+
+              {/* Anthropic specific settings */}
+              {config.provider === "anthropic" && (
+                <div className="grid gap-2">
+                  <Label>Top K</Label>
+                  <Input
+                    type="number"
+                    value={config.topK || ''}
+                    onChange={(e) =>
+                      onChange({ ...config, topK: parseInt(e.target.value) || undefined })
+                    }
+                    min={1}
+                    placeholder="Optional top-k for sampling"
+                  />
+                </div>
+              )}
+
+              {/* Groq specific settings */}
+              {config.provider === "groq" && (
+                <div className="grid gap-2">
+                  <Label>Stop Sequences</Label>
+                  <Textarea
+                    value={config.stopSequences?.join('\n') || ''}
+                    onChange={(e) =>
+                      onChange({ 
+                        ...config, 
+                        stopSequences: e.target.value ? e.target.value.split('\n') : undefined 
+                      })
+                    }
+                    placeholder="Enter stop sequences (one per line)"
+                  />
+                </div>
+              )}
+
+              {/* Google specific settings */}
+              {config.provider === "google" && (
+                <>
+                  <div className="grid gap-2">
+                    <Label>Candidate Count</Label>
+                    <Input
+                      type="number"
+                      value={config.candidateCount || ''}
+                      onChange={(e) =>
+                        onChange({ ...config, candidateCount: parseInt(e.target.value) || undefined })
+                      }
+                      min={1}
+                      placeholder="Number of response candidates"
+                    />
+                  </div>
+                  <div className="grid gap-2">
+                    <Label>Safety Settings</Label>
+                    <Textarea
+                      value={config.safetySettings ? JSON.stringify(config.safetySettings, null, 2) : ''}
+                      onChange={(e) => {
+                        try {
+                          const settings = e.target.value ? JSON.parse(e.target.value) : undefined;
+                          onChange({ ...config, safetySettings: settings });
+                        } catch (error) {
+                          // Invalid JSON, don't update
+                        }
+                      }}
+                      placeholder='[{"category": "HARM_CATEGORY", "threshold": "BLOCK_LOW_AND_ABOVE"}]'
+                    />
+                  </div>
+                </>
+              )}
             </>
           )}
 
