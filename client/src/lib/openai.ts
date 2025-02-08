@@ -75,29 +75,24 @@ async function generateWithGoogle(prompt: string, config: ModelConfig) {
 
   try {
     const result = await model.generateContent({
-      contents: [{ role: "user", parts: [{ text: prompt }] }],
+      contents: [
+        { role: "user", parts: [{ text: config.systemPrompt || "" }] },
+        { role: "user", parts: [{ text: prompt }] }
+      ],
       generationConfig: {
         temperature: config.temperature,
         maxOutputTokens: config.maxTokens,
         candidateCount: config.candidateCount,
       },
-      // Properly type the safety settings
       safetySettings: config.safetySettings?.map(setting => ({
         category: setting.category,
         threshold: setting.threshold
       }))
     });
 
+    console.log("Google API Response:", result);
     const response = await result.response;
-    const text = response.text();
-
-    // Try to parse as JSON first
-    try {
-      return JSON.parse(text);
-    } catch {
-      // If not valid JSON, wrap the text in a variations array
-      return { variations: [text] };
-    }
+    return response.text();
   } catch (error) {
     console.error("Google API Error:", error);
     throw error;
@@ -127,7 +122,9 @@ Format the response as a detailed prompt with clear sections for:
 
   try {
     if (config.provider === "google") {
-      return await generateWithGoogle(prompt, config);
+      const response = await generateWithGoogle(prompt, config);
+      console.log("Google Meta Prompt Response:", response);
+      return response || "";
     }
 
     const client = getClient(config);
@@ -155,6 +152,7 @@ Format the response as a detailed prompt with clear sections for:
       return response.choices[0].message.content || "";
     }
   } catch (error) {
+    console.error("Meta Prompt Generation Error:", error);
     handleApiError(error);
     return "";
   }
