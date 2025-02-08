@@ -89,15 +89,6 @@ export function ComparisonDashboard({
 }: ComparisonDashboardProps) {
   const [criteria, setCriteria] = useState<EvaluationCriterion[]>(defaultCriteria);
 
-  // Get all unique criteria IDs from results
-  const getCriteriaIds = () => {
-    const ids = new Set<string>();
-    evaluationResults.forEach(result => {
-      Object.keys(result.scores).forEach(id => ids.add(id));
-    });
-    return Array.from(ids);
-  };
-
   // Calculate weighted average score for a variation
   const getWeightedScore = (variationIndex: number) => {
     const results = evaluationResults.filter(r => r.variationIndex === variationIndex);
@@ -181,52 +172,46 @@ export function ComparisonDashboard({
 
       {evaluationResults.length > 0 && (
         <>
-          {/* Side-by-side comparison */}
+          {/* Side-by-side comparison of responses */}
           <div className="space-y-6">
-            <h3 className="text-xl font-semibold">Side-by-side Comparison</h3>
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Test Case</TableHead>
-                    {variations.map((_, i) => (
-                      <TableHead key={i}>Variation {i + 1}</TableHead>
-                    ))}
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {testCases.map((testCase, testIndex) => (
-                    <TableRow key={testIndex}>
-                      <TableCell className="font-medium">{testCase.input}</TableCell>
-                      {variations.map((_, varIndex) => {
-                        const result = evaluationResults.find(
-                          r => r.variationIndex === varIndex && r.testCaseIndex === testIndex
-                        );
-                        return (
-                          <TableCell key={varIndex} className="max-w-md">
-                            <div className="space-y-2">
-                              <p className="text-sm">{result?.response}</p>
-                              {result && (
-                                <div className="text-xs space-y-1">
-                                  {Object.entries(result.scores).map(([criterionId, score]) => {
-                                    const criterion = criteria.find(c => c.id === criterionId);
-                                    return criterion ? (
-                                      <div key={criterionId} className="flex justify-between">
-                                        <span>{criterion.name}:</span>
-                                        <span>{(score * 100).toFixed(0)}%</span>
-                                      </div>
-                                    ) : null;
-                                  })}
-                                </div>
-                              )}
+            <h3 className="text-xl font-semibold">Response Comparison</h3>
+            <div className="space-y-8">
+              {testCases.map((testCase, testIndex) => (
+                <Card key={testIndex} className="p-4">
+                  <div className="mb-4">
+                    <h4 className="font-semibold mb-2">Test Query:</h4>
+                    <p className="text-sm bg-muted p-2 rounded">{testCase.input}</p>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    {variations.map((_, varIndex) => {
+                      const result = evaluationResults.find(
+                        r => r.variationIndex === varIndex && r.testCaseIndex === testIndex
+                      );
+                      return (
+                        <div key={varIndex} className="space-y-3">
+                          <h5 className="font-medium">Meta-Prompt {varIndex + 1}</h5>
+                          <div className="bg-secondary p-3 rounded min-h-[100px] text-sm">
+                            {result?.response || "No response generated"}
+                          </div>
+                          {result && (
+                            <div className="text-xs space-y-1">
+                              {Object.entries(result.scores).map(([criterionId, score]) => {
+                                const criterion = criteria.find(c => c.id === criterionId);
+                                return criterion ? (
+                                  <div key={criterionId} className="flex justify-between">
+                                    <span>{criterion.name}:</span>
+                                    <span>{(score * 100).toFixed(0)}%</span>
+                                  </div>
+                                ) : null;
+                              })}
                             </div>
-                          </TableCell>
-                        );
-                      })}
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </Card>
+              ))}
             </div>
           </div>
 

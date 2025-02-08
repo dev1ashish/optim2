@@ -348,12 +348,18 @@ export async function generateResponse(
 ): Promise<string> {
   const client = getClient(config);
   try {
+    // Use the variation as the system prompt
+    const modifiedConfig = {
+      ...config,
+      systemPrompt: prompt // The prompt variation becomes the system prompt
+    };
+
     if (config.provider === "anthropic") {
       const response = await (client as Anthropic).messages.create({
         model: config.model,
         max_tokens: config.maxTokens,
         temperature: config.temperature,
-        messages: formatMessages(`Given this prompt:\n${prompt}\n\nRespond to this input: ${testCase}`, config).map(msg => ({
+        messages: formatMessages(testCase, modifiedConfig).map(msg => ({
           role: msg.role === "system" ? "assistant" : msg.role,
           content: msg.content
         }))
@@ -362,7 +368,7 @@ export async function generateResponse(
     } else {
       const response = await (client as OpenAI).chat.completions.create({
         model: config.model,
-        messages: formatMessages(`Given this prompt:\n${prompt}\n\nRespond to this input: ${testCase}`, config),
+        messages: formatMessages(testCase, modifiedConfig),
         temperature: config.temperature,
         max_tokens: config.maxTokens
       });
