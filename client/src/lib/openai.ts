@@ -92,20 +92,16 @@ async function generateWithGoogle(prompt: string, config: ModelConfig) {
 
     console.log("Google API Response:", result);
 
-    // Handle the response
     const response = await result.response;
     const text = response.text();
 
-    // Try to parse as JSON first
-    try {
-      const jsonResponse = JSON.parse(text);
-      if (jsonResponse.variations && Array.isArray(jsonResponse.variations)) {
-        return jsonResponse.variations;
-      }
-    } catch (e) {
-      // If not JSON or wrong format, wrap the text in an array
-      return [text];
-    }
+    // Split the response by numbered items
+    const variations = text.split(/\d+\.\s+/)
+      .map(item => item.trim())
+      .filter(item => item.length > 0);
+
+    console.log("Parsed variations:", variations);
+    return variations;
   } catch (error) {
     console.error("Google API Error:", error);
     throw error;
