@@ -1,5 +1,6 @@
 import OpenAI from "openai";
 import Anthropic from '@anthropic-ai/sdk';
+import { GoogleGenerativeAI } from "@google/generative-ai";
 import { type MetaPromptInput } from "@shared/schema";
 import type { ModelConfig } from "@/components/settings/model-settings-section";
 
@@ -27,6 +28,8 @@ function getClient(config: ModelConfig) {
         baseURL: "https://api.groq.com/v1",
         dangerouslyAllowBrowser: true
       });
+    case "google":
+      return new GoogleGenerativeAI(config.apiKey);
     default:
       throw new Error(`Unsupported provider: ${config.provider}`);
   }
@@ -58,12 +61,12 @@ function formatMessages(prompt: string, config: ModelConfig) {
   return messages;
 }
 
-// Handler for API errors
-function handleApiError(error: any) {
-  if (error.error?.type === "tokens" || error.error?.code === "rate_limit_exceeded") {
-    throw new Error(`Rate limit exceeded. Please wait a moment and try again.`);
-  }
-  throw error;
+// Helper function to handle Google Gemini responses
+async function handleGeminiCompletion(client: any, prompt: string, config: ModelConfig) {
+  const model = client.getGenerativeModel({ model: config.model });
+  const result = await model.generateContent(prompt);
+  const response = await result.response;
+  return response.text();
 }
 
 // the newest OpenAI model is "gpt-4o" which was released May 13, 2024. do not change this unless explicitly requested by the user
@@ -91,7 +94,9 @@ Format the response as a detailed prompt with clear sections for:
     const client = getClient(config);
     const messages = formatMessages(prompt, config);
 
-    if (config.provider === "anthropic") {
+    if (config.provider === "google") {
+      return await handleGeminiCompletion(client, prompt, config);
+    } else if (config.provider === "anthropic") {
       const response = await (client as Anthropic).messages.create({
         model: config.model,
         max_tokens: config.maxTokens,
@@ -115,6 +120,14 @@ Format the response as a detailed prompt with clear sections for:
     handleApiError(error);
     return "";
   }
+}
+
+// Handler for API errors
+function handleApiError(error: any) {
+  if (error.error?.type === "tokens" || error.error?.code === "rate_limit_exceeded") {
+    throw new Error(`Rate limit exceeded. Please wait a moment and try again.`);
+  }
+  throw error;
 }
 
 export async function generateVariations(
@@ -151,7 +164,9 @@ Important: The response must contain exactly ${count} variations, no more and no
   try {
     let content: string;
 
-    if (config.provider === "anthropic") {
+    if (config.provider === "google") {
+      content = await handleGeminiCompletion(client, prompt, config);
+    } else if (config.provider === "anthropic") {
       const response = await (client as Anthropic).messages.create({
         model: config.model,
         max_tokens: Math.max(config.maxTokens, 4096),
@@ -223,7 +238,9 @@ Return ONLY a JSON object with exactly these scores, no other text. Example form
   try {
     let content: string;
 
-    if (config.provider === "anthropic") {
+    if (config.provider === "google") {
+      content = await handleGeminiCompletion(client, evaluationPrompt, config);
+    } else if (config.provider === "anthropic") {
       const response = await (client as Anthropic).messages.create({
         model: config.model,
         max_tokens: config.maxTokens,
@@ -307,7 +324,9 @@ Return ONLY a JSON object with this structure:
   try {
     let content: string;
 
-    if (config.provider === "anthropic") {
+    if (config.provider === "google") {
+      content = await handleGeminiCompletion(client, prompt, config);
+    } else if (config.provider === "anthropic") {
       const response = await (client as Anthropic).messages.create({
         model: config.model,
         max_tokens: config.maxTokens,
@@ -354,7 +373,9 @@ export async function generateResponse(
       systemPrompt: prompt // The prompt variation becomes the system prompt
     };
 
-    if (config.provider === "anthropic") {
+    if (config.provider === "google") {
+      return await handleGeminiCompletion(client, testCase, modifiedConfig);
+    } else if (config.provider === "anthropic") {
       const response = await (client as Anthropic).messages.create({
         model: config.model,
         max_tokens: config.maxTokens,

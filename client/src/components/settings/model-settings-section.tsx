@@ -23,7 +23,7 @@ import { useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
 
 export interface ModelConfig {
-  provider: "openai" | "anthropic" | "groq";
+  provider: "openai" | "anthropic" | "groq" | "google";
   model: string;
   temperature: number;
   maxTokens: number;
@@ -43,8 +43,16 @@ interface ModelSettingsSectionProps {
 
 const MODEL_OPTIONS = {
   openai: ["gpt-4o", "gpt-4", "gpt-3.5-turbo"],
-  anthropic: ["claude-3-opus-20240229", "claude-3-5-sonnet-20241022", "claude-3-5-haiku-20241022"],
-  groq: ["mixtral-8x7b", "llama2-70b"]
+  anthropic: ["claude-3-opus-20240229", "claude-3-sonnet-20240229", "claude-3-haiku-20240229"],
+  groq: ["mixtral-8x7b", "llama2-70b"],
+  google: [
+    "gemini-2.0-flash",
+    "gemini-2.0-flash-lite-preview-02-05",
+    "gemini-1.5-flash",
+    "gemini-1.5-flash-8b",
+    "gemini-1.5-pro",
+    "gemini-1.0-pro"
+  ]
 };
 
 export function ModelSettingsSection({ 
@@ -145,6 +153,7 @@ export function ModelSettingsSection({
                     <SelectItem value="openai">OpenAI</SelectItem>
                     <SelectItem value="anthropic">Anthropic</SelectItem>
                     <SelectItem value="groq">Groq</SelectItem>
+                    <SelectItem value="google">Google</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
