@@ -8,7 +8,7 @@ import { VariationGenerator } from "@/components/variation-generator";
 import { ComparisonDashboard } from "@/components/comparison-dashboard";
 import { useToast } from "@/hooks/use-toast";
 import { TestCreator } from "@/components/test-creator";
-import type { MetaPromptInput, TestCase } from "@shared/schema";
+import type { MetaPromptInput, TestCase, EvaluationResult, EvaluationCriterion } from "@shared/schema";
 import type { ModelConfig } from "@/components/settings/model-settings-section";
 
 const MAX_TOKENS = {
@@ -60,7 +60,7 @@ export default function Home() {
   const [metaPrompt, setMetaPrompt] = useState("");
   const [variations, setVariations] = useState<string[]>([]);
   const [testCases, setTestCases] = useState<TestCase[]>([]);
-  const [evaluationResults, setEvaluationResults] = useState<Record<string, number>[]>([]);
+  const [evaluationResults, setEvaluationResults] = useState<EvaluationResult[]>([]);
 
   // Model configs for each section
   const [metaPromptConfig, setMetaPromptConfig] = useState<ModelConfig>(defaultModelConfig);
@@ -154,6 +154,36 @@ export default function Home() {
     }
   });
 
+  const evaluationMutation = useMutation({
+    mutationFn: async (criteria: EvaluationCriterion[]) => {
+      const config = useDefaultForEvaluation ? metaPromptConfig : evaluationConfig;
+      if (!checkApiKey(config)) return;
+
+      const results: EvaluationResult[] = [];
+      for (let varIndex = 0; varIndex < variations.length; varIndex++) {
+        for (let testIndex = 0; testIndex < testCases.length; testIndex++) {
+          const response = await evaluatePrompt(
+            variations[varIndex],
+            testCases[testIndex].input,
+            criteria.reduce((acc, c) => ({ ...acc, [c.id]: 0 }), {}),
+            config
+          );
+
+          results.push({
+            variationIndex: varIndex,
+            testCaseIndex: testIndex,
+            scores: response,
+            response: variations[varIndex] // This will be replaced with actual response in a real implementation
+          });
+        }
+      }
+
+      setEvaluationResults(results);
+      setCurrentStep(4);
+      return results;
+    }
+  });
+
   const handleMetaPromptSubmit = async (data: MetaPromptInput) => {
     try {
       await metaPromptMutation.mutateAsync(data);
@@ -224,7 +254,10 @@ export default function Home() {
         {testCases.length > 0 && (
           <ComparisonDashboard
             variations={variations}
+            testCases={testCases}
             evaluationResults={evaluationResults}
+            onEvaluate={(criteria) => evaluationMutation.mutateAsync(criteria)}
+            isEvaluating={evaluationMutation.isPending}
             modelConfig={useDefaultForEvaluation ? metaPromptConfig : evaluationConfig}
             onModelConfigChange={setEvaluationConfig}
             defaultConfig={metaPromptConfig}

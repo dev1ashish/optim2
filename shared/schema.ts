@@ -27,9 +27,47 @@ export const metaPromptSchema = z.object({
 
 export type MetaPromptInput = z.infer<typeof metaPromptSchema>;
 
-// Simplified test case schema - removed criteria as it will be handled in evaluation step
+// Test case schema
 export const testCaseSchema = z.object({
   input: z.string().min(1, "Test input is required")
 });
 
 export type TestCase = z.infer<typeof testCaseSchema>;
+
+// Evaluation criteria schema
+export const evaluationCriterionSchema = z.object({
+  id: z.string(),
+  name: z.string().min(1, "Criterion name is required"),
+  description: z.string(),
+  systemPrompt: z.string().min(1, "System prompt is required"),
+  weight: z.number().min(0).max(1).default(1),
+  modelConfig: z.object({
+    provider: z.enum(["openai", "anthropic", "groq"]),
+    model: z.string(),
+    temperature: z.number().min(0).max(2),
+    maxTokens: z.number().min(1),
+    apiKey: z.string(),
+    systemPrompt: z.string(),
+    topP: z.number().optional(),
+    frequencyPenalty: z.number().optional(),
+    presencePenalty: z.number().optional(),
+    responseFormat: z.object({ type: z.string() }).optional(),
+    seed: z.number().optional(),
+    tools: z.array(z.any()).optional(),
+    toolChoice: z.string().optional(),
+    topK: z.number().optional(),
+    stopSequences: z.array(z.string()).optional()
+  }).optional()
+});
+
+export type EvaluationCriterion = z.infer<typeof evaluationCriterionSchema>;
+
+// Evaluation result schema
+export const evaluationResultSchema = z.object({
+  variationIndex: z.number(),
+  testCaseIndex: z.number(),
+  scores: z.record(z.string(), z.number().min(0).max(1)),
+  response: z.string()
+});
+
+export type EvaluationResult = z.infer<typeof evaluationResultSchema>;
