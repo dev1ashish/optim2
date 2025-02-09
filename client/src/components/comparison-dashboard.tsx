@@ -1,13 +1,5 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Card } from "@/components/ui/card";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import {
   BarChart,
   Bar,
@@ -23,7 +15,6 @@ import { EvaluationCriteriaManager } from "./evaluation-criteria-manager";
 import type { EvaluationCriterion, EvaluationResult } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 
-
 interface ComparisonDashboardProps {
   variations: string[];
   testCases: { input: string }[];
@@ -35,45 +26,8 @@ interface ComparisonDashboardProps {
   defaultConfig: ModelConfig;
   useDefaultSettings: boolean;
   onUseDefaultSettingsChange: (use: boolean) => void;
+  evaluationCriteria: EvaluationCriterion[];
 }
-
-const defaultCriteria: EvaluationCriterion[] = [
-  {
-    id: "clarity",
-    name: "Clarity",
-    description: "How clear and understandable is the response?",
-    systemPrompt: "Rate the following response for clarity and understandability on a scale of 0 to 1. Consider whether the message is well-structured, easy to follow, and free of ambiguity.",
-    weight: 1
-  },
-  {
-    id: "relevance",
-    name: "Relevance",
-    description: "How relevant is the response to the input?",
-    systemPrompt: "Rate the following response for relevance on a scale of 0 to 1. Consider how well it addresses the specific query or concern raised in the input.",
-    weight: 1
-  },
-  {
-    id: "empathy",
-    name: "Empathy",
-    description: "How empathetic is the response?",
-    systemPrompt: "Rate the following response for empathy on a scale of 0 to 1. Consider how well it acknowledges and responds to the emotional content of the input.",
-    weight: 1
-  },
-  {
-    id: "actionability",
-    name: "Actionability",
-    description: "How actionable is the advice or information provided?",
-    systemPrompt: "Rate the following response for actionability on a scale of 0 to 1. Consider whether it provides practical, implementable suggestions or clear next steps.",
-    weight: 1
-  },
-  {
-    id: "professionalism",
-    name: "Professionalism",
-    description: "How professional is the tone and content?",
-    systemPrompt: "Rate the following response for professionalism on a scale of 0 to 1. Consider the appropriateness of tone, language choice, and overall presentation.",
-    weight: 1
-  }
-];
 
 export function ComparisonDashboard({
   variations,
@@ -85,9 +39,10 @@ export function ComparisonDashboard({
   onModelConfigChange,
   defaultConfig,
   useDefaultSettings,
-  onUseDefaultSettingsChange
+  onUseDefaultSettingsChange,
+  evaluationCriteria: initialCriteria
 }: ComparisonDashboardProps) {
-  const [criteria, setCriteria] = useState<EvaluationCriterion[]>(defaultCriteria);
+  const [criteria, setCriteria] = useState<EvaluationCriterion[]>(initialCriteria);
 
   // Calculate weighted average score for a variation
   const getWeightedScore = (variationIndex: number) => {
@@ -138,7 +93,7 @@ export function ComparisonDashboard({
         <h2 className="text-2xl font-bold">Evaluation Dashboard</h2>
         <ModelSettingsSection
           title="Evaluation Settings"
-          description="Configure the default model for evaluating responses"
+          description="Configure the model for evaluating responses"
           config={modelConfig}
           onChange={onModelConfigChange}
           defaultConfig={defaultConfig}
@@ -189,7 +144,7 @@ export function ComparisonDashboard({
                       );
                       return (
                         <div key={varIndex} className="space-y-3">
-                          <h5 className="font-medium">Meta-Prompt {varIndex + 1}</h5>
+                          <h5 className="font-medium">Response {varIndex + 1}</h5>
                           <div className="bg-secondary p-3 rounded min-h-[100px] text-sm">
                             {result?.response || "No response generated"}
                           </div>

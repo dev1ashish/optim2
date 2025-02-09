@@ -95,6 +95,17 @@ export default function Home() {
       setBaseInput(input.baseInput);
       const generatedPrompt = await generateMetaPrompt(input, metaPromptConfig);
       setMetaPrompt(generatedPrompt);
+
+      // Generate initial evaluation criteria based on the meta prompt
+      const generatedCriteria = await generateEvaluationCriteria(
+        input.baseInput,
+        generatedPrompt,
+        metaPromptConfig
+      );
+      if (generatedCriteria.length > 0) {
+        setEvaluationCriteria(generatedCriteria);
+      }
+
       setCurrentStep(2);
       return generatedPrompt;
     },
@@ -143,15 +154,6 @@ export default function Home() {
         }
         setTestCases(generatedTests);
 
-        // Generate evaluation criteria based on the context
-        const generatedCriteria = await generateEvaluationCriteria(
-          baseInput,
-          metaPrompt,
-          config
-        );
-        if (generatedCriteria.length > 0) {
-          setEvaluationCriteria(generatedCriteria);
-        }
 
         setCurrentStep(3);
         return generatedTests;
