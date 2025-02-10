@@ -45,7 +45,7 @@ const MODEL_CONFIGS = {
 
 function getClient(config: ModelConfig) {
     if (!config.apiKey) {
-        throw new Error("API key is required. Please set it in the model settings.");
+        throw new Error("API key is required. Please set it in the settings.");
     }
 
     switch (config.provider) {
@@ -225,7 +225,6 @@ export async function compareModels(
     );
 }
 
-// the newest OpenAI model is "gpt-4o" which was released May 13, 2024. do not change this unless explicitly requested by the user
 export async function generateMetaPrompt(
     input: MetaPromptInput,
     config: ModelConfig
