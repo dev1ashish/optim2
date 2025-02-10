@@ -1,12 +1,11 @@
 import { useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { useToast } from "@/hooks/use-toast";
 import { MODEL_CONFIGS, getDefaultConfig } from "@/lib/model-config";
-import { useApiKeyStore } from "@/lib/api-keys";
 import type { ModelConfig } from "@/components/settings/model-settings-section";
 
 interface ModelSelectorProps {
@@ -14,28 +13,26 @@ interface ModelSelectorProps {
 }
 
 export function ModelSelector({ onModelConfigsChange }: ModelSelectorProps) {
-  const { keys } = useApiKeyStore();
-  const { toast } = useToast();
   const [selectedProviders, setSelectedProviders] = useState<Record<string, boolean>>({});
+  const [apiKeys, setApiKeys] = useState<Record<string, string>>({});
   const [selectedModels, setSelectedModels] = useState<Record<string, string[]>>({});
 
   const handleProviderToggle = (provider: string, checked: boolean) => {
-    if (checked && !keys[provider]) {
-      toast({
-        title: "API Key Required",
-        description: `Please set your ${MODEL_CONFIGS[provider].name} API key in the settings first.`,
-        variant: "destructive"
-      });
-      return;
-    }
-
     setSelectedProviders(prev => ({ ...prev, [provider]: checked }));
     if (!checked) {
+      // Remove API key and selected models when provider is deselected
+      const { [provider]: _, ...restApiKeys } = apiKeys;
       const { [provider]: __, ...restModels } = selectedModels;
+      setApiKeys(restApiKeys);
       setSelectedModels(restModels);
     } else {
+      // Initialize empty array for selected models when provider is selected
       setSelectedModels(prev => ({ ...prev, [provider]: [] }));
     }
+  };
+
+  const handleApiKeyChange = (provider: string, key: string) => {
+    setApiKeys(prev => ({ ...prev, [provider]: key }));
   };
 
   const handleModelToggle = (provider: string, modelId: string, checked: boolean) => {
@@ -54,19 +51,9 @@ export function ModelSelector({ onModelConfigsChange }: ModelSelectorProps) {
         const providerModels = selectedModels[provider] || [];
         return providerModels.map(modelId => ({
           ...getDefaultConfig(provider, modelId),
-          apiKey: keys[provider]
+          apiKey: apiKeys[provider]
         }));
       });
-
-    if (configs.length === 0) {
-      toast({
-        title: "No Models Selected",
-        description: "Please select at least one model to compare.",
-        variant: "destructive"
-      });
-      return;
-    }
-
     onModelConfigsChange(configs);
   };
 
@@ -81,34 +68,40 @@ export function ModelSelector({ onModelConfigsChange }: ModelSelectorProps) {
               <Checkbox
                 checked={selectedProviders[provider] || false}
                 onCheckedChange={(checked) => handleProviderToggle(provider, checked as boolean)}
-                disabled={!keys[provider]}
               />
-              <Label className="flex items-center gap-2">
-                {config.name}
-                {!keys[provider] && (
-                  <span className="text-xs text-muted-foreground">(API key required)</span>
-                )}
-              </Label>
+              <Label>{config.name}</Label>
             </div>
 
             {selectedProviders[provider] && (
-              <div className="ml-6">
-                <Label className="text-sm">Models</Label>
-                <ScrollArea className="h-40 rounded border p-2">
-                  <div className="space-y-2">
-                    {config.models.map((model) => (
-                      <div key={model.id} className="flex items-center gap-2">
-                        <Checkbox
-                          checked={(selectedModels[provider] || []).includes(model.id)}
-                          onCheckedChange={(checked) => 
-                            handleModelToggle(provider, model.id, checked as boolean)
-                          }
-                        />
-                        <span className="text-sm">{model.name}</span>
-                      </div>
-                    ))}
-                  </div>
-                </ScrollArea>
+              <div className="ml-6 space-y-2">
+                <div>
+                  <Label className="text-sm">API Key</Label>
+                  <Input
+                    type="password"
+                    value={apiKeys[provider] || ""}
+                    onChange={(e) => handleApiKeyChange(provider, e.target.value)}
+                    placeholder={`Enter ${config.name} API Key`}
+                  />
+                </div>
+
+                <div>
+                  <Label className="text-sm">Models</Label>
+                  <ScrollArea className="h-40 rounded border p-2">
+                    <div className="space-y-2">
+                      {config.models.map((model) => (
+                        <div key={model.id} className="flex items-center gap-2">
+                          <Checkbox
+                            checked={(selectedModels[provider] || []).includes(model.id)}
+                            onCheckedChange={(checked) => 
+                              handleModelToggle(provider, model.id, checked as boolean)
+                            }
+                          />
+                          <span className="text-sm">{model.name}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </ScrollArea>
+                </div>
               </div>
             )}
           </div>
