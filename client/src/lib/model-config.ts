@@ -1,4 +1,9 @@
-import { ModelConfig } from "@/components/settings/model-settings-section";
+import { z } from "zod";
+import type { ModelConfig } from "@/components/settings/model-settings-section";
+
+// Define provider type to prevent invalid providers
+export const VALID_PROVIDERS = ["openai", "anthropic", "gemini", "groq"] as const;
+export type Provider = typeof VALID_PROVIDERS[number];
 
 // Define model groups by provider
 export const MODEL_CONFIGS = {
@@ -42,9 +47,10 @@ export const MODEL_CONFIGS = {
       { id: "mixtral-8x7b-32768", name: "Mixtral 8x7B", maxTokens: 32768 }
     ]
   }
-};
+} as const;
 
-export const getDefaultConfig = (provider: string, modelId: string): ModelConfig => ({
+// Helper to get default configuration for a model
+export const getDefaultConfig = (provider: Provider, modelId: string): ModelConfig => ({
   provider,
   model: modelId,
   temperature: 0.7,
