@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
@@ -7,6 +7,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { ModelConfig } from "@/components/settings/model-settings-section";
 import { Gauge } from "lucide-react";
 import type { StreamMetrics } from "@/lib/openai";
+import { ModelSelector } from "./model-selector";
 
 interface ModelComparisonResult {
   modelConfig: ModelConfig;
@@ -30,6 +31,16 @@ export function ModelArena({
   results
 }: ModelArenaProps) {
   const [isComparing, setIsComparing] = useState(false);
+  const [selectedConfigs, setSelectedConfigs] = useState<ModelConfig[]>(modelConfigs);
+
+  const handleStartComparison = async () => {
+    setIsComparing(true);
+    try {
+      await onStartComparison(selectedConfigs);
+    } finally {
+      setIsComparing(false);
+    }
+  };
 
   return (
     <Card className="p-6 space-y-6">
@@ -38,22 +49,22 @@ export function ModelArena({
           <Gauge className="w-5 h-5" />
           <Label className="text-lg">Model Arena</Label>
         </div>
-        <Button 
-          onClick={() => {
-            setIsComparing(true);
-            onStartComparison(modelConfigs).finally(() => setIsComparing(false));
-          }}
-          disabled={isComparing}
-        >
-          {isComparing ? "Comparing..." : "Start Comparison"}
-        </Button>
       </div>
+
+      <ModelSelector onModelConfigsChange={setSelectedConfigs} />
 
       <div className="space-y-4">
         <div className="bg-muted p-3 rounded">
           <Label>Test Input:</Label>
           <p className="mt-1 text-sm">{testCase}</p>
         </div>
+
+        <Button 
+          onClick={handleStartComparison}
+          disabled={isComparing || selectedConfigs.length === 0}
+        >
+          {isComparing ? "Comparing..." : "Start Comparison"}
+        </Button>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {results.map((result, index) => (

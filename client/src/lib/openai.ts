@@ -27,6 +27,9 @@ function getClient(config: ModelConfig) {
         baseURL: "https://api.groq.com/v1",
         dangerouslyAllowBrowser: true
       });
+    case "gemini":
+      // TODO: Add Gemini client when SDK is available
+      throw new Error("Gemini support coming soon");
     default:
       throw new Error(`Unsupported provider: ${config.provider}`);
   }
@@ -60,10 +63,139 @@ function formatMessages(prompt: string, config: ModelConfig) {
 
 // Handler for API errors
 function handleApiError(error: any) {
+  console.error("API Error:", error);
   if (error.error?.type === "tokens" || error.error?.code === "rate_limit_exceeded") {
     throw new Error(`Rate limit exceeded. Please wait a moment and try again.`);
   }
   throw error;
+}
+
+export interface StreamMetrics {
+  startTime: number;
+  endTime?: number;
+  tokenCount: number;
+  totalTokens?: number;
+  estimatedCost: number;
+}
+
+const COST_PER_TOKEN = {
+  // OpenAI models
+  "gpt-4o": 0.00001,
+  "gpt-4o-mini": 0.00001,
+  "gpt-4o-mini-realtime-preview": 0.00001,
+  "gpt-4o-realtime-preview": 0.00001,
+  "gpt-4o-audio-preview": 0.00001,
+
+  // Anthropic models
+  "claude-3-5-sonnet-20241022": 0.00003,
+  "claude-3-5-haiku-20241022": 0.00002,
+  "claude-3-opus-20240229": 0.00004,
+  "claude-3-sonnet-20240229": 0.00003,
+  "claude-3-haiku-20240307": 0.00002,
+
+  // Gemini models
+  "gemini-2.0-flash": 0.00001,
+  "gemini-2.0-flash-lite-preview-02-05": 0.000005,
+  "gemini-1.5-flash": 0.00001,
+  "gemini-1.5-flash-8b": 0.000005,
+  "gemini-1.5-pro": 0.00001,
+
+  // Groq models
+  "llama-3-70b-8192": 0.000001,
+  "llama-3-8b-8192": 0.0000005,
+  "llama2-70b-4096": 0.000001,
+  "llama2-7b-8192": 0.0000005,
+  "mixtral-8x7b-32768": 0.000001
+} as const;
+
+export async function* streamResponse(
+  prompt: string,
+  testCase: string,
+  config: ModelConfig,
+  onMetrics?: (metrics: StreamMetrics) => void
+): AsyncGenerator<{ chunk: string, metrics: StreamMetrics }> {
+  const client = getClient(config);
+  const metrics: StreamMetrics = {
+    startTime: Date.now(),
+    tokenCount: 0,
+    estimatedCost: 0
+  };
+
+  try {
+    const modifiedConfig = {
+      ...config,
+      systemPrompt: prompt
+    };
+
+    if (config.provider === "anthropic") {
+      const stream = await (client as Anthropic).messages.create({
+        model: config.model,
+        max_tokens: config.maxTokens,
+        temperature: config.temperature,
+        messages: formatMessages(testCase, modifiedConfig).map(msg => ({
+          role: msg.role === "system" ? "assistant" : msg.role,
+          content: msg.content
+        })),
+        stream: true
+      });
+
+      for await (const chunk of stream) {
+        if (chunk.type === 'content_block_delta' && chunk.delta.text) {
+          const text = chunk.delta.text;
+          metrics.tokenCount += text.split(/\s+/).length; // Rough estimation
+          metrics.estimatedCost = metrics.tokenCount * (COST_PER_TOKEN[config.model as keyof typeof COST_PER_TOKEN] || 0.00001);
+          onMetrics?.(metrics);
+          yield { chunk: text, metrics };
+        }
+      }
+    } else if (config.provider === "openai" || config.provider === "groq") {
+      const stream = await (client as OpenAI).chat.completions.create({
+        model: config.model,
+        messages: formatMessages(testCase, modifiedConfig),
+        temperature: config.temperature,
+        max_tokens: config.maxTokens,
+        stream: true
+      });
+
+      for await (const chunk of stream) {
+        const text = chunk.choices[0]?.delta?.content || "";
+        metrics.tokenCount += text.split(/\s+/).length; // Rough estimation
+        metrics.estimatedCost = metrics.tokenCount * (COST_PER_TOKEN[config.model as keyof typeof COST_PER_TOKEN] || 0.00001);
+        onMetrics?.(metrics);
+        yield { chunk: text, metrics };
+      }
+    } else {
+      throw new Error(`Streaming not supported for provider: ${config.provider}`);
+    }
+
+    metrics.endTime = Date.now();
+    onMetrics?.(metrics);
+  } catch (error) {
+    handleApiError(error);
+    return;
+  }
+}
+
+export async function compareModels(
+  prompt: string,
+  testCase: string,
+  configs: ModelConfig[],
+  onProgress: (modelIndex: number, chunk: string, metrics: StreamMetrics) => void
+): Promise<void> {
+  const streams = configs.map((config, index) => {
+    const stream = streamResponse(prompt, testCase, config, (metrics) => {
+      onProgress(index, "", metrics);
+    });
+    return { stream, index };
+  });
+
+  await Promise.all(
+    streams.map(async ({ stream, index }) => {
+      for await (const { chunk, metrics } of stream) {
+        onProgress(index, chunk, metrics);
+      }
+    })
+  );
 }
 
 // the newest OpenAI model is "gpt-4o" which was released May 13, 2024. do not change this unless explicitly requested by the user
@@ -378,105 +510,4 @@ export async function generateResponse(
     handleApiError(error);
     return "";
   }
-}
-
-export interface StreamMetrics {
-  startTime: number;
-  endTime?: number;
-  tokenCount: number;
-  totalTokens?: number;
-  estimatedCost: number;
-}
-
-const COST_PER_TOKEN = {
-  "gpt-4o": 0.00001,  // Example costs, adjust as needed
-  "gpt-3.5-turbo": 0.000002,
-  "claude-3": 0.00001,
-  "llama2": 0.000001
-};
-
-export async function* streamResponse(
-  prompt: string,
-  testCase: string,
-  config: ModelConfig,
-  onMetrics?: (metrics: StreamMetrics) => void
-): AsyncGenerator<{ chunk: string, metrics: StreamMetrics }> {
-  const client = getClient(config);
-  const metrics: StreamMetrics = {
-    startTime: Date.now(),
-    tokenCount: 0,
-    estimatedCost: 0
-  };
-
-  try {
-    const modifiedConfig = {
-      ...config,
-      systemPrompt: prompt
-    };
-
-    if (config.provider === "anthropic") {
-      const stream = await (client as Anthropic).messages.create({
-        model: config.model,
-        max_tokens: config.maxTokens,
-        temperature: config.temperature,
-        messages: formatMessages(testCase, modifiedConfig).map(msg => ({
-          role: msg.role === "system" ? "assistant" : msg.role,
-          content: msg.content
-        })),
-        stream: true
-      });
-
-      for await (const chunk of stream) {
-        const text = chunk.content[0]?.text || "";
-        metrics.tokenCount += text.split(/\s+/).length; // Rough estimation
-        metrics.estimatedCost = metrics.tokenCount * (COST_PER_TOKEN[config.model] || 0.00001);
-        onMetrics?.(metrics);
-        yield { chunk: text, metrics };
-      }
-    } else {
-      const stream = await (client as OpenAI).chat.completions.create({
-        model: config.model,
-        messages: formatMessages(testCase, modifiedConfig),
-        temperature: config.temperature,
-        max_tokens: config.maxTokens,
-        stream: true
-      });
-
-      for await (const chunk of stream) {
-        const text = chunk.choices[0]?.delta?.content || "";
-        metrics.tokenCount += text.split(/\s+/).length; // Rough estimation
-        metrics.estimatedCost = metrics.tokenCount * (COST_PER_TOKEN[config.model] || 0.00001);
-        onMetrics?.(metrics);
-        yield { chunk: text, metrics };
-      }
-    }
-
-    metrics.endTime = Date.now();
-    onMetrics?.(metrics);
-  } catch (error) {
-    handleApiError(error);
-    return;
-  }
-}
-
-export async function compareModels(
-  prompt: string,
-  testCase: string,
-  configs: ModelConfig[],
-  onProgress: (modelIndex: number, chunk: string, metrics: StreamMetrics) => void
-): Promise<void> {
-  const streams = configs.map((config, index) => {
-    const stream = streamResponse(prompt, testCase, config, (metrics) => {
-      onProgress(index, "", metrics);
-    });
-    return { stream, index };
-  });
-
-  await Promise.all(
-    streams.map(async ({ stream, index }) => {
-      for await (const { chunk, metrics } of stream) {
-        onProgress(index, chunk, metrics);
-      }
-    })
-  );
 }
