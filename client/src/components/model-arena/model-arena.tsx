@@ -8,6 +8,7 @@ import { ModelConfig } from "@/components/settings/model-settings-section";
 import { Gauge } from "lucide-react";
 import type { StreamMetrics } from "@/lib/openai";
 import { ModelSelector } from "./model-selector";
+import { Alert, AlertDescription } from "@/components/ui/alert";
 
 interface ModelComparisonResult {
   modelConfig: ModelConfig;
@@ -15,6 +16,7 @@ interface ModelComparisonResult {
   metrics: StreamMetrics;
   isStreaming: boolean;
   streamProgress: number;
+  error?: string;
 }
 
 interface ModelArenaProps {
@@ -77,7 +79,15 @@ export function ModelArena({
               </div>
 
               <div className="bg-secondary p-3 rounded min-h-[150px] text-sm whitespace-pre-wrap">
-                {result.response || "Waiting for response..."}
+                {result.error ? (
+                  <Alert variant="destructive">
+                    <AlertDescription>
+                      {result.error}
+                    </AlertDescription>
+                  </Alert>
+                ) : (
+                  result.response || "Waiting for response..."
+                )}
               </div>
 
               <div className="grid grid-cols-2 gap-2 text-xs">
