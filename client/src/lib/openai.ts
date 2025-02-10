@@ -63,7 +63,7 @@ function getClient(config: ModelConfig) {
         case "groq":
             return new OpenAI({
                 apiKey: config.apiKey,
-                baseURL: "https://api.groq.com/v1",
+                baseURL: "https://api.groq.com/openai/v1",
                 dangerouslyAllowBrowser: true
             });
         case "gemini":
