@@ -24,7 +24,7 @@ import {
 import { Form, FormControl, FormField, FormItem, FormMessage } from "@/components/ui/form";
 import { evaluationCriterionSchema, type EvaluationCriterion } from "@shared/schema";
 import { ModelSettingsSection, type ModelConfig } from "@/components/settings/model-settings-section";
-import { Plus, Trash2, Edit2 } from "lucide-react";
+import { Settings2, Plus, Trash2, Edit2 } from "lucide-react";
 
 interface EvaluationCriteriaManagerProps {
   criteria: EvaluationCriterion[];
@@ -63,8 +63,7 @@ export function EvaluationCriteriaManager({
     } else {
       onAddCriterion({
         ...data,
-        id: crypto.randomUUID(),
-        weight: data.weight / 5 // Normalize weight here
+        id: crypto.randomUUID()
       });
     }
     setShowForm(false);
@@ -149,15 +148,14 @@ export function EvaluationCriteriaManager({
                 name="weight"
                 render={({ field }) => (
                   <FormItem>
-                    <Label>Weight (1-5)</Label>
+                    <Label>Weight (0-1)</Label>
                     <FormControl>
                       <Input
                         type="number"
-                        step="1"
-                        min="1"
-                        max="5"
+                        step="0.1"
+                        min="0"
+                        max="1"
                         {...field}
-                        onChange={(e) => field.onChange(parseInt(e.target.value))}
                       />
                     </FormControl>
                     <FormMessage />
@@ -203,7 +201,7 @@ export function EvaluationCriteriaManager({
             <TableRow>
               <TableHead>Name</TableHead>
               <TableHead>Description</TableHead>
-              <TableHead>Weight (1-5)</TableHead>
+              <TableHead>Weight</TableHead>
               <TableHead>Actions</TableHead>
             </TableRow>
           </TableHeader>
@@ -212,7 +210,7 @@ export function EvaluationCriteriaManager({
               <TableRow key={criterion.id}>
                 <TableCell>{criterion.name}</TableCell>
                 <TableCell>{criterion.description}</TableCell>
-                <TableCell>{criterion.weight * 5}</TableCell> {/* Display normalized weight */}
+                <TableCell>{criterion.weight}</TableCell>
                 <TableCell>
                   <div className="flex gap-2">
                     <Button

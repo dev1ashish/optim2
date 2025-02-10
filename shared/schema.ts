@@ -40,7 +40,7 @@ export const evaluationCriterionSchema = z.object({
   name: z.string().min(1, "Criterion name is required"),
   description: z.string(),
   systemPrompt: z.string().min(1, "System prompt is required"),
-  weight: z.number().min(1, "Weight must be at least 1").max(5, "Weight cannot exceed 5").default(1),
+  weight: z.number().min(0).max(1).default(1),
   modelConfig: z.object({
     provider: z.enum(["openai", "anthropic", "groq"]),
     model: z.string(),

@@ -270,92 +270,6 @@ Return ONLY a JSON object with exactly these scores, no other text. Example form
   }
 }
 
-interface EvaluationCriterion {
-  id: string;
-  name: string;
-  description: string;
-  systemPrompt: string;
-  weight: number;
-}
-
-export async function generateEvaluationCriteria(
-  baseInput: string,
-  metaPrompt: string,
-  config: ModelConfig
-): Promise<EvaluationCriterion[]> {
-  const prompt = `Given this context:
-Base Input: "${baseInput}"
-Meta Prompt: "${metaPrompt}"
-
-Generate 5 evaluation criteria that would be most appropriate for assessing responses in this specific context.
-Each criterion should include:
-1. A clear name
-2. A detailed description
-3. A system prompt for evaluating this aspect
-4. A suggested weight (1-5, where 5 is most important)
-
-Return ONLY a JSON array in this exact format:
-[
-  {
-    "id": "unique_id",
-    "name": "Criterion Name",
-    "description": "Detailed description of what this criterion measures",
-    "systemPrompt": "Rate the following response for [aspect] on a scale of 0 to 1, considering [specific factors]",
-    "weight": number
-  }
-]`;
-
-  try {
-    const client = getClient(config);
-    let content: string;
-
-    if (config.provider === "anthropic") {
-      const response = await (client as Anthropic).messages.create({
-        model: config.model,
-        max_tokens: config.maxTokens,
-        temperature: config.temperature,
-        messages: formatMessages(prompt, config).map(msg => ({
-          role: msg.role === "system" ? "assistant" : msg.role,
-          content: msg.content
-        }))
-      });
-      content = response.content[0].text || "";
-    } else {
-      const response = await (client as OpenAI).chat.completions.create({
-        model: config.model,
-        messages: formatMessages(prompt, config),
-        temperature: config.temperature,
-        max_tokens: config.maxTokens,
-        response_format: { type: "json_object" }
-      });
-      content = response.choices[0].message.content || "";
-    }
-
-    try {
-      const result = JSON.parse(content);
-      if (!Array.isArray(result)) {
-        console.error("Invalid response format - not an array");
-        return [];
-      }
-
-      // Validate and clean up the criteria
-      return result.map((criterion: any, index) => ({
-        id: criterion.id || `criterion_${index + 1}`,
-        name: criterion.name || `Criterion ${index + 1}`,
-        description: criterion.description || "",
-        systemPrompt: criterion.systemPrompt || `Rate the following response for ${criterion.name} on a scale of 0 to 1`,
-        weight: Math.min(5, Math.max(1, criterion.weight || 1)) // Ensure weight is between 1-5
-      }));
-    } catch (parseError) {
-      console.error("Failed to parse criteria:", parseError);
-      return [];
-    }
-  } catch (error) {
-    console.error("API Error:", error);
-    return [];
-  }
-}
-
 export async function generateTestCases(
   baseInput: string,
   metaPrompt: string,
@@ -365,18 +279,13 @@ export async function generateTestCases(
   input: string;
   criteria: Record<string, number>;
 }[]> {
-  const criteria = await generateEvaluationCriteria(baseInput, metaPrompt, config);
-  const criteriaObject = {};
-  criteria.forEach(criterion => criteriaObject[criterion.name] = criterion.weight/5);
-
-
   const prompt = `Given this context:
 Base Input: "${baseInput}"
 Meta Prompt: "${metaPrompt}"
 Generated Variations:
 ${variations.map((v, i) => `${i + 1}. ${v}`).join('\n')}
 
-Generate a set of test cases that will effectively evaluate these prompt variations.  Use the following criteria for evaluation: ${JSON.stringify(criteriaObject)}
+Generate a set of test cases that will effectively evaluate these prompt variations.
 For each test case:
 1. Create a challenging input scenario
 2. Define evaluation criteria with weights (0-1) based on what's important for this specific use case

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
-import { generateMetaPrompt, generateVariations, evaluatePrompt, generateTestCases, generateResponse, generateEvaluationCriteria } from "@/lib/openai";
+import { generateMetaPrompt, generateVariations, evaluatePrompt, generateTestCases, generateResponse } from "@/lib/openai"; // Added generateResponse import
 import { PromptChain } from "@/components/prompt-chain";
 import { MetaPromptForm } from "@/components/meta-prompt-form";
 import { VariationGenerator } from "@/components/variation-generator";
@@ -61,7 +61,6 @@ export default function Home() {
   const [variations, setVariations] = useState<string[]>([]);
   const [testCases, setTestCases] = useState<TestCase[]>([]);
   const [evaluationResults, setEvaluationResults] = useState<EvaluationResult[]>([]);
-  const [evaluationCriteria, setEvaluationCriteria] = useState<EvaluationCriterion[]>([]); // Added state for evaluation criteria
 
   // Model configs for each section
   const [metaPromptConfig, setMetaPromptConfig] = useState<ModelConfig>(defaultModelConfig);
@@ -95,17 +94,6 @@ export default function Home() {
       setBaseInput(input.baseInput);
       const generatedPrompt = await generateMetaPrompt(input, metaPromptConfig);
       setMetaPrompt(generatedPrompt);
-
-      // Generate initial evaluation criteria based on the meta prompt
-      const generatedCriteria = await generateEvaluationCriteria(
-        input.baseInput,
-        generatedPrompt,
-        metaPromptConfig
-      );
-      if (generatedCriteria.length > 0) {
-        setEvaluationCriteria(generatedCriteria);
-      }
-
       setCurrentStep(2);
       return generatedPrompt;
     },
@@ -142,7 +130,6 @@ export default function Home() {
       if (!checkApiKey(config)) return;
 
       try {
-        // Generate test cases
         const generatedTests = await generateTestCases(
           baseInput,
           metaPrompt,
@@ -153,8 +140,6 @@ export default function Home() {
           throw new Error("Failed to generate test cases");
         }
         setTestCases(generatedTests);
-
-
         setCurrentStep(3);
         return generatedTests;
       } catch (error) {
@@ -286,7 +271,6 @@ export default function Home() {
             defaultConfig={metaPromptConfig}
             useDefaultSettings={useDefaultForEvaluation}
             onUseDefaultSettingsChange={setUseDefaultForEvaluation}
-            evaluationCriteria={evaluationCriteria} // Pass evaluationCriteria to ComparisonDashboard
           />
         )}
       </div>
