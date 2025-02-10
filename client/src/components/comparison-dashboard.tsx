@@ -16,8 +16,10 @@ import {
   CartesianGrid,
   Tooltip,
   Legend,
+  LineChart,
+  Line,
 } from "recharts";
-import { Medal } from "lucide-react";
+import { Medal, Trophy } from "lucide-react";
 import { ModelSettingsSection, type ModelConfig } from "@/components/settings/model-settings-section";
 import { EvaluationCriteriaManager } from "./evaluation-criteria-manager";
 import type { EvaluationCriterion, EvaluationResult } from "@shared/schema";
@@ -45,6 +47,34 @@ interface ComparisonDashboardProps {
     streamProgress: number;
   }[];
 }
+
+// Calculate aggregated metrics for a prompt variation
+const calculatePromptMetrics = (results: ComparisonDashboardProps["modelResults"]) => {
+  if (!results.length) return null;
+
+  const avgTokensPerSec = results.reduce((acc, result) => {
+    const duration = (result.metrics.endTime || Date.now()) - result.metrics.startTime;
+    return acc + (result.metrics.tokenCount / (duration / 1000));
+  }, 0) / results.length;
+
+  const avgCost = results.reduce((acc, result) => 
+    acc + result.metrics.estimatedCost, 0) / results.length;
+
+  const totalTokens = results.reduce((acc, result) => 
+    acc + result.metrics.tokenCount, 0);
+
+  const avgResponseTime = results.reduce((acc, result) => {
+    const duration = (result.metrics.endTime || Date.now()) - result.metrics.startTime;
+    return acc + duration;
+  }, 0) / results.length;
+
+  return {
+    avgTokensPerSec,
+    avgCost,
+    totalTokens,
+    avgResponseTime
+  };
+};
 
 const defaultCriteria: EvaluationCriterion[] = [
   {
@@ -100,6 +130,43 @@ export function ComparisonDashboard({
 }: ComparisonDashboardProps) {
   const [criteria, setCriteria] = useState<EvaluationCriterion[]>(defaultCriteria);
 
+  // Calculate metrics for each prompt variation
+  const promptMetrics = variations.map((variation, index) => {
+    const variationResults = modelResults.filter((_, i) => 
+      Math.floor(i / testCases.length) === index
+    );
+    return {
+      index,
+      variation,
+      metrics: calculatePromptMetrics(variationResults) || {
+        avgTokensPerSec: 0,
+        avgCost: 0,
+        totalTokens: 0,
+        avgResponseTime: 0
+      }
+    };
+  });
+
+  // Sort prompt variations by different metrics
+  const byTokensPerSec = [...promptMetrics].sort((a, b) => 
+    b.metrics.avgTokensPerSec - a.metrics.avgTokensPerSec
+  );
+  const byCost = [...promptMetrics].sort((a, b) => 
+    a.metrics.avgCost - b.metrics.avgCost
+  );
+  const byTokens = [...promptMetrics].sort((a, b) => 
+    a.metrics.totalTokens - b.metrics.totalTokens
+  );
+
+  // Create chart data for prompt variation performance
+  const chartData = promptMetrics.map((metric, index) => ({
+    name: `Variation ${index + 1}`,
+    tokensPerSec: metric.metrics.avgTokensPerSec,
+    cost: metric.metrics.avgCost,
+    tokens: metric.metrics.totalTokens,
+    responseTime: metric.metrics.avgResponseTime
+  }));
+
   // Calculate weighted average score for a variation
   const getWeightedScore = (variationIndex: number) => {
     const results = evaluationResults.filter(r => r.variationIndex === variationIndex);
@@ -129,7 +196,7 @@ export function ComparisonDashboard({
   const sortedScores = [...scores].sort((a, b) => b.score - a.score);
   const topThree = sortedScores.slice(0, 3);
 
-  const chartData = variations.map((_, index) => ({
+  const chartData2 = variations.map((_, index) => ({
     name: `Variation ${index + 1}`,
     score: getWeightedScore(index)
   }));
@@ -237,7 +304,7 @@ export function ComparisonDashboard({
               <BarChart
                 width={500}
                 height={300}
-                data={chartData}
+                data={chartData2}
                 margin={{
                   top: 5,
                   right: 30,
@@ -278,28 +345,141 @@ export function ComparisonDashboard({
           </div>
         </>
       )}
+      {/* Prompt Variation Leaderboard */}
+      {modelResults.length > 0 && (
+        <div className="space-y-6">
+          <div className="flex items-center gap-2">
+            <Trophy className="w-6 h-6 text-yellow-500" />
+            <h2 className="text-2xl font-bold">Prompt Variation Leaderboard</h2>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            {/* Fastest Processing */}
+            <Card className="p-4">
+              <h3 className="font-semibold mb-4">Fastest Processing (Tokens/sec)</h3>
+              <div className="space-y-2">
+                {byTokensPerSec.slice(0, 3).map((prompt, index) => (
+                  <div key={index} className="flex items-center gap-2">
+                    <Medal className={`w-5 h-5 ${
+                      index === 0 ? "text-yellow-500" :
+                      index === 1 ? "text-gray-400" :
+                      "text-amber-700"
+                    }`} />
+                    <span>Variation {prompt.index + 1}:</span>
+                    <span className="font-mono">
+                      {prompt.metrics.avgTokensPerSec.toFixed(1)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </Card>
+
+            {/* Most Cost-Effective */}
+            <Card className="p-4">
+              <h3 className="font-semibold mb-4">Most Cost-Effective</h3>
+              <div className="space-y-2">
+                {byCost.slice(0, 3).map((prompt, index) => (
+                  <div key={index} className="flex items-center gap-2">
+                    <Medal className={`w-5 h-5 ${
+                      index === 0 ? "text-yellow-500" :
+                      index === 1 ? "text-gray-400" :
+                      "text-amber-700"
+                    }`} />
+                    <span>Variation {prompt.index + 1}:</span>
+                    <span className="font-mono">
+                      ${prompt.metrics.avgCost.toFixed(4)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </Card>
+
+            {/* Token Efficiency */}
+            <Card className="p-4">
+              <h3 className="font-semibold mb-4">Token Efficiency</h3>
+              <div className="space-y-2">
+                {byTokens.slice(0, 3).map((prompt, index) => (
+                  <div key={index} className="flex items-center gap-2">
+                    <Medal className={`w-5 h-5 ${
+                      index === 0 ? "text-yellow-500" :
+                      index === 1 ? "text-gray-400" :
+                      "text-amber-700"
+                    }`} />
+                    <span>Variation {prompt.index + 1}:</span>
+                    <span className="font-mono">
+                      {prompt.metrics.totalTokens.toLocaleString()} tokens
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          </div>
+
+          {/* Performance Trends */}
+          <Card className="p-4">
+            <h3 className="font-semibold mb-4">Performance Trends</h3>
+            <div className="w-full overflow-x-auto">
+              <LineChart
+                width={800}
+                height={400}
+                data={chartData}
+                margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="name" />
+                <YAxis yAxisId="left" orientation="left" stroke="#8884d8" />
+                <YAxis yAxisId="right" orientation="right" stroke="#82ca9d" />
+                <Tooltip />
+                <Legend />
+                <Line
+                  yAxisId="left"
+                  type="monotone"
+                  dataKey="tokensPerSec"
+                  name="Tokens/sec"
+                  stroke="#8884d8"
+                />
+                <Line
+                  yAxisId="right"
+                  type="monotone"
+                  dataKey="cost"
+                  name="Cost ($)"
+                  stroke="#82ca9d"
+                />
+              </LineChart>
+            </div>
+          </Card>
+        </div>
+      )}
+
       {testCases.map((testCase) => (
-        <ModelArena
-          key={testCase.input}
-          testCase={testCase.input}
-          modelConfigs={[
-            metaPromptConfig,
-            {
-              ...metaPromptConfig,
-              provider: "anthropic",
-              model: "claude-3"
-            },
-            {
-              ...metaPromptConfig,
-              provider: "groq",
-              model: "llama2"
+        variations.map((variation, variationIndex) => (
+          <ModelArena
+            key={`${testCase.input}-${variationIndex}`}
+            testCase={testCase.input}
+            promptVariation={variation}
+            promptVariationIndex={variationIndex}
+            modelConfigs={[
+              metaPromptConfig,
+              {
+                ...metaPromptConfig,
+                provider: "anthropic",
+                model: "claude-3"
+              },
+              {
+                ...metaPromptConfig,
+                provider: "groq",
+                model: "llama2"
+              }
+            ]}
+            onStartComparison={(configs) =>
+              onCompareModels(variation, testCase.input, configs)
             }
-          ]}
-          onStartComparison={(configs) =>
-            onCompareModels(metaPrompt, testCase.input, configs)
-          }
-          results={modelResults}
-        />
+            results={modelResults.slice(
+              variationIndex * testCases.length,
+              (variationIndex + 1) * testCases.length
+            )}
+          />
+        ))
       ))}
     </Card>
   );
