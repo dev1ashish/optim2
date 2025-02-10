@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
-import { generateMetaPrompt, generateVariations, evaluatePrompt, generateTestCases, generateResponse } from "@/lib/openai"; // Added generateResponse import
+import { generateMetaPrompt, generateVariations, evaluatePrompt, generateTestCases, generateResponse, compareModels, type StreamMetrics } from "@/lib/openai"; // Added generateResponse and compareModels imports
 import { PromptChain } from "@/components/prompt-chain";
 import { MetaPromptForm } from "@/components/meta-prompt-form";
 import { VariationGenerator } from "@/components/variation-generator";
@@ -72,6 +72,14 @@ export default function Home() {
   const [useDefaultForVariation, setUseDefaultForVariation] = useState(true);
   const [useDefaultForTest, setUseDefaultForTest] = useState(true);
   const [useDefaultForEvaluation, setUseDefaultForEvaluation] = useState(true);
+
+  const [modelResults, setModelResults] = useState<{
+    modelConfig: ModelConfig;
+    response: string;
+    metrics: StreamMetrics;
+    isStreaming: boolean;
+    streamProgress: number;
+  }[]>([]);
 
   const { toast } = useToast();
 
@@ -204,6 +212,49 @@ export default function Home() {
     }
   };
 
+  const handleModelComparison = async (
+    prompt: string,
+    testCase: string,
+    configs: ModelConfig[]
+  ) => {
+    // Initialize results for each model
+    setModelResults(configs.map(config => ({
+      modelConfig: config,
+      response: "",
+      metrics: {
+        startTime: Date.now(),
+        tokenCount: 0,
+        estimatedCost: 0
+      },
+      isStreaming: true,
+      streamProgress: 0
+    })));
+
+    try {
+      await compareModels(prompt, testCase, configs, (modelIndex, chunk, metrics) => {
+        setModelResults(prev => prev.map((result, i) => {
+          if (i === modelIndex) {
+            return {
+              ...result,
+              response: result.response + chunk,
+              metrics,
+              streamProgress: metrics.endTime ? 100 : ((metrics.tokenCount / (metrics.totalTokens || 100)) * 100),
+              isStreaming: !metrics.endTime
+            };
+          }
+          return result;
+        }));
+      });
+    } catch (error) {
+      console.error("Model comparison error:", error);
+      toast({
+        title: "Error",
+        description: "Failed to compare models",
+        variant: "destructive"
+      });
+    }
+  };
+
   return (
     <div className="container mx-auto py-8 space-y-8">
       <h1 className="text-4xl font-bold text-center mb-8 bg-gradient-to-r from-green-500 to-blue-500 text-transparent bg-clip-text">
@@ -271,6 +322,8 @@ export default function Home() {
             defaultConfig={metaPromptConfig}
             useDefaultSettings={useDefaultForEvaluation}
             onUseDefaultSettingsChange={setUseDefaultForEvaluation}
+            modelResults={modelResults}
+            onCompareModels={handleModelComparison}
           />
         )}
       </div>

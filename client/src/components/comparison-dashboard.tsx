@@ -22,7 +22,8 @@ import { ModelSettingsSection, type ModelConfig } from "@/components/settings/mo
 import { EvaluationCriteriaManager } from "./evaluation-criteria-manager";
 import type { EvaluationCriterion, EvaluationResult } from "@shared/schema";
 import { Button } from "@/components/ui/button";
-
+import { ModelArena } from "./model-arena/model-arena";
+import type { StreamMetrics } from "@/lib/openai";
 
 interface ComparisonDashboardProps {
   variations: string[];
@@ -35,6 +36,14 @@ interface ComparisonDashboardProps {
   defaultConfig: ModelConfig;
   useDefaultSettings: boolean;
   onUseDefaultSettingsChange: (use: boolean) => void;
+  onCompareModels: (prompt: string, testCase: string, configs: ModelConfig[]) => Promise<void>;
+  modelResults: {
+    modelConfig: ModelConfig;
+    response: string;
+    metrics: StreamMetrics;
+    isStreaming: boolean;
+    streamProgress: number;
+  }[];
 }
 
 const defaultCriteria: EvaluationCriterion[] = [
@@ -85,7 +94,9 @@ export function ComparisonDashboard({
   onModelConfigChange,
   defaultConfig,
   useDefaultSettings,
-  onUseDefaultSettingsChange
+  onUseDefaultSettingsChange,
+  onCompareModels,
+  modelResults
 }: ComparisonDashboardProps) {
   const [criteria, setCriteria] = useState<EvaluationCriterion[]>(defaultCriteria);
 
@@ -131,6 +142,10 @@ export function ComparisonDashboard({
       default: return "text-gray-500";
     }
   };
+
+  const metaPrompt = "This is a meta prompt"; // Placeholder, replace with actual meta prompt
+  const metaPromptConfig = modelConfig; // Placeholder, adjust as needed
+
 
   return (
     <Card className="p-6 space-y-8">
@@ -263,6 +278,29 @@ export function ComparisonDashboard({
           </div>
         </>
       )}
+      {testCases.map((testCase) => (
+        <ModelArena
+          key={testCase.input}
+          testCase={testCase.input}
+          modelConfigs={[
+            metaPromptConfig,
+            {
+              ...metaPromptConfig,
+              provider: "anthropic",
+              model: "claude-3"
+            },
+            {
+              ...metaPromptConfig,
+              provider: "groq",
+              model: "llama2"
+            }
+          ]}
+          onStartComparison={(configs) =>
+            onCompareModels(metaPrompt, testCase.input, configs)
+          }
+          results={modelResults}
+        />
+      ))}
     </Card>
   );
 }

@@ -379,3 +379,104 @@ export async function generateResponse(
     return "";
   }
 }
+
+export interface StreamMetrics {
+  startTime: number;
+  endTime?: number;
+  tokenCount: number;
+  totalTokens?: number;
+  estimatedCost: number;
+}
+
+const COST_PER_TOKEN = {
+  "gpt-4o": 0.00001,  // Example costs, adjust as needed
+  "gpt-3.5-turbo": 0.000002,
+  "claude-3": 0.00001,
+  "llama2": 0.000001
+};
+
+export async function* streamResponse(
+  prompt: string,
+  testCase: string,
+  config: ModelConfig,
+  onMetrics?: (metrics: StreamMetrics) => void
+): AsyncGenerator<{ chunk: string, metrics: StreamMetrics }> {
+  const client = getClient(config);
+  const metrics: StreamMetrics = {
+    startTime: Date.now(),
+    tokenCount: 0,
+    estimatedCost: 0
+  };
+
+  try {
+    const modifiedConfig = {
+      ...config,
+      systemPrompt: prompt
+    };
+
+    if (config.provider === "anthropic") {
+      const stream = await (client as Anthropic).messages.create({
+        model: config.model,
+        max_tokens: config.maxTokens,
+        temperature: config.temperature,
+        messages: formatMessages(testCase, modifiedConfig).map(msg => ({
+          role: msg.role === "system" ? "assistant" : msg.role,
+          content: msg.content
+        })),
+        stream: true
+      });
+
+      for await (const chunk of stream) {
+        const text = chunk.content[0]?.text || "";
+        metrics.tokenCount += text.split(/\s+/).length; // Rough estimation
+        metrics.estimatedCost = metrics.tokenCount * (COST_PER_TOKEN[config.model] || 0.00001);
+        onMetrics?.(metrics);
+        yield { chunk: text, metrics };
+      }
+    } else {
+      const stream = await (client as OpenAI).chat.completions.create({
+        model: config.model,
+        messages: formatMessages(testCase, modifiedConfig),
+        temperature: config.temperature,
+        max_tokens: config.maxTokens,
+        stream: true
+      });
+
+      for await (const chunk of stream) {
+        const text = chunk.choices[0]?.delta?.content || "";
+        metrics.tokenCount += text.split(/\s+/).length; // Rough estimation
+        metrics.estimatedCost = metrics.tokenCount * (COST_PER_TOKEN[config.model] || 0.00001);
+        onMetrics?.(metrics);
+        yield { chunk: text, metrics };
+      }
+    }
+
+    metrics.endTime = Date.now();
+    onMetrics?.(metrics);
+  } catch (error) {
+    handleApiError(error);
+    return;
+  }
+}
+
+export async function compareModels(
+  prompt: string,
+  testCase: string,
+  configs: ModelConfig[],
+  onProgress: (modelIndex: number, chunk: string, metrics: StreamMetrics) => void
+): Promise<void> {
+  const streams = configs.map((config, index) => {
+    const stream = streamResponse(prompt, testCase, config, (metrics) => {
+      onProgress(index, "", metrics);
+    });
+    return { stream, index };
+  });
+
+  await Promise.all(
+    streams.map(async ({ stream, index }) => {
+      for await (const { chunk, metrics } of stream) {
+        onProgress(index, chunk, metrics);
+      }
+    })
+  );
+}
