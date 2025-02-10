@@ -26,6 +26,7 @@ import type { EvaluationCriterion, EvaluationResult } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { ModelSelector } from "./model-arena/model-selector";
 import type { StreamMetrics } from "@/lib/openai";
+import { ModelArena } from "@/components/model-arena/model-arena"; // Added import statement
 
 interface ComparisonDashboardProps {
   variations: string[];
