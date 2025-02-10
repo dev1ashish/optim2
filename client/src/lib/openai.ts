@@ -2,208 +2,235 @@ import OpenAI from "openai";
 import Anthropic from '@anthropic-ai/sdk';
 import { type MetaPromptInput } from "@shared/schema";
 import type { ModelConfig } from "@/components/settings/model-settings-section";
+import type { Provider } from "@/types";
 
-// Helper function to get the right client based on provider
-function getClient(config: ModelConfig) {
-  if (!config.apiKey) {
-    throw new Error("API key is required. Please set it in the model settings.");
-  }
-
-  switch (config.provider) {
-    case "openai":
-      return new OpenAI({
-        apiKey: config.apiKey,
-        dangerouslyAllowBrowser: true
-      });
-    case "anthropic":
-      return new Anthropic({
-        apiKey: config.apiKey,
-        dangerouslyAllowBrowser: true
-      });
-    case "groq":
-      // Groq uses OpenAI's API format
-      return new OpenAI({
-        apiKey: config.apiKey,
-        baseURL: "https://api.groq.com/v1",
-        dangerouslyAllowBrowser: true
-      });
-    case "gemini":
-      // TODO: Add Gemini client when SDK is available
-      throw new Error("Gemini support coming soon");
-    default:
-      throw new Error(`Unsupported provider: ${config.provider}`);
-  }
+interface ModelConfigItem {
+    id: string;
+    maxTokens: number;
 }
 
-// Helper function to format messages based on provider
-function formatMessages(prompt: string, config: ModelConfig) {
-  const messages = [];
+interface ProviderConfig {
+    models: ModelConfigItem[];
+}
 
-  if (config.systemPrompt) {
-    if (config.provider === "anthropic") {
-      messages.push({
-        role: "assistant" as const,
-        content: config.systemPrompt
-      });
-    } else {
-      messages.push({
-        role: "system" as const,
-        content: config.systemPrompt
-      });
+const MODEL_CONFIGS = {
+    openai: {
+        models: [
+            { id: "gpt-4o", maxTokens: 8192 },
+            { id: "gpt-4o-mini", maxTokens: 4096 },
+            { id: "gpt-4o-mini-realtime-preview", maxTokens: 4096 },
+            { id: "gpt-4o-realtime-preview", maxTokens: 8192 },
+            { id: "gpt-4o-audio-preview", maxTokens: 4096 }
+        ]
+    },
+    anthropic: {
+        models: [
+            { id: "claude-3-5-sonnet-20241022", maxTokens: 8192 },
+            { id: "claude-3-5-haiku-20241022", maxTokens: 4096 },
+            { id: "claude-3-opus-20240229", maxTokens: 8192 },
+            { id: "claude-3-sonnet-20240229", maxTokens: 8192 },
+            { id: "claude-3-haiku-20240307", maxTokens: 4096 }
+        ]
+    },
+    groq: {
+        models: [
+            { id: "llama-3-70b-8192", maxTokens: 8192 },
+            { id: "llama-3-8b-8192", maxTokens: 4096 },
+            { id: "llama2-70b-4096", maxTokens: 4096 },
+            { id: "llama2-7b-8192", maxTokens: 4096 },
+            { id: "mixtral-8x7b-32768", maxTokens: 32768 }
+        ]
     }
-  }
+} as const;
 
-  messages.push({
-    role: "user" as const,
-    content: prompt
-  });
+function getClient(config: ModelConfig) {
+    if (!config.apiKey) {
+        throw new Error("API key is required. Please set it in the model settings.");
+    }
 
-  return messages;
+    switch (config.provider) {
+        case "openai":
+            return new OpenAI({
+                apiKey: config.apiKey,
+                dangerouslyAllowBrowser: true
+            });
+        case "anthropic":
+            return new Anthropic({
+                apiKey: config.apiKey,
+                dangerouslyAllowBrowser: true
+            });
+        case "groq":
+            return new OpenAI({
+                apiKey: config.apiKey,
+                baseURL: "https://api.groq.com/v1",
+                dangerouslyAllowBrowser: true
+            });
+        case "gemini":
+            throw new Error("Gemini support coming soon");
+        default:
+            throw new Error(`Unsupported provider: ${config.provider}`);
+    }
 }
 
-// Handler for API errors
+function formatMessages(prompt: string, config: ModelConfig) {
+    const messages = [];
+
+    if (config.systemPrompt) {
+        if (config.provider === "anthropic") {
+            messages.push({
+                role: "assistant" as const,
+                content: config.systemPrompt
+            });
+        } else {
+            messages.push({
+                role: "system" as const,
+                content: config.systemPrompt
+            });
+        }
+    }
+
+    messages.push({
+        role: "user" as const,
+        content: prompt
+    });
+
+    return messages;
+}
+
 function handleApiError(error: any) {
-  console.error("API Error:", error);
-  if (error.error?.type === "tokens" || error.error?.code === "rate_limit_exceeded") {
-    throw new Error(`Rate limit exceeded. Please wait a moment and try again.`);
-  }
-  throw error;
+    console.error("API Error:", error);
+
+    if (error.error?.message?.includes("max_tokens")) {
+        throw new Error(`Token limit exceeded for model. Please reduce the max tokens setting.`);
+    }
+
+    if (error.error?.type === "tokens" || error.error?.code === "rate_limit_exceeded") {
+        throw new Error(`Rate limit exceeded. Please wait a moment and try again.`);
+    }
+
+    if (error.error?.message) {
+        throw new Error(`API Error: ${error.error.message}`);
+    }
+
+    throw error;
 }
 
 export interface StreamMetrics {
-  startTime: number;
-  endTime?: number;
-  tokenCount: number;
-  totalTokens?: number;
-  estimatedCost: number;
+    startTime: number;
+    endTime?: number;
+    tokenCount: number;
+    estimatedCost: number;
 }
 
-const COST_PER_TOKEN = {
-  // OpenAI models
-  "gpt-4o": 0.00001,
-  "gpt-4o-mini": 0.00001,
-  "gpt-4o-mini-realtime-preview": 0.00001,
-  "gpt-4o-realtime-preview": 0.00001,
-  "gpt-4o-audio-preview": 0.00001,
-
-  // Anthropic models
-  "claude-3-5-sonnet-20241022": 0.00003,
-  "claude-3-5-haiku-20241022": 0.00002,
-  "claude-3-opus-20240229": 0.00004,
-  "claude-3-sonnet-20240229": 0.00003,
-  "claude-3-haiku-20240307": 0.00002,
-
-  // Gemini models
-  "gemini-2.0-flash": 0.00001,
-  "gemini-2.0-flash-lite-preview-02-05": 0.000005,
-  "gemini-1.5-flash": 0.00001,
-  "gemini-1.5-flash-8b": 0.000005,
-  "gemini-1.5-pro": 0.00001,
-
-  // Groq models
-  "llama-3-70b-8192": 0.000001,
-  "llama-3-8b-8192": 0.0000005,
-  "llama2-70b-4096": 0.000001,
-  "llama2-7b-8192": 0.0000005,
-  "mixtral-8x7b-32768": 0.000001
-} as const;
-
 export async function* streamResponse(
-  prompt: string,
-  testCase: string,
-  config: ModelConfig,
-  onMetrics?: (metrics: StreamMetrics) => void
+    prompt: string,
+    testCase: string,
+    config: ModelConfig,
+    onMetrics?: (metrics: StreamMetrics) => void
 ): AsyncGenerator<{ chunk: string, metrics: StreamMetrics }> {
-  const client = getClient(config);
-  const metrics: StreamMetrics = {
-    startTime: Date.now(),
-    tokenCount: 0,
-    estimatedCost: 0
-  };
-
-  try {
-    const modifiedConfig = {
-      ...config,
-      systemPrompt: prompt
+    const client = getClient(config);
+    const metrics: StreamMetrics = {
+        startTime: Date.now(),
+        tokenCount: 0,
+        estimatedCost: 0
     };
 
-    if (config.provider === "anthropic") {
-      const stream = await (client as Anthropic).messages.create({
-        model: config.model,
-        max_tokens: config.maxTokens,
-        temperature: config.temperature,
-        messages: formatMessages(testCase, modifiedConfig).map(msg => ({
-          role: msg.role === "system" ? "assistant" : msg.role,
-          content: msg.content
-        })),
-        stream: true
-      });
+    try {
+        const modifiedConfig = {
+            ...config,
+            systemPrompt: prompt
+        };
 
-      for await (const chunk of stream) {
-        if (chunk.type === 'content_block_delta' && chunk.delta.text) {
-          const text = chunk.delta.text;
-          metrics.tokenCount += text.split(/\s+/).length; // Rough estimation
-          metrics.estimatedCost = metrics.tokenCount * (COST_PER_TOKEN[config.model as keyof typeof COST_PER_TOKEN] || 0.00001);
-          onMetrics?.(metrics);
-          yield { chunk: text, metrics };
+        const modelConfig = MODEL_CONFIGS[config.provider as Provider].models.find(m => m.id === config.model);
+        const maxTokens = modelConfig?.maxTokens || 4096;
+
+        if (config.provider === "anthropic") {
+            const stream = await (client as Anthropic).messages.create({
+                model: config.model,
+                max_tokens: Math.min(config.maxTokens, maxTokens),
+                temperature: config.temperature,
+                messages: formatMessages(testCase, modifiedConfig).map(msg => ({
+                    role: msg.role === "system" ? "assistant" : msg.role,
+                    content: msg.content
+                })),
+                stream: true
+            });
+
+            for await (const chunk of stream) {
+                if (chunk.type === 'content_block_delta' && chunk.delta?.type === 'text') {
+                    const text = chunk.delta.text;
+                    metrics.tokenCount += text.split(/\s+/).length;
+                    metrics.estimatedCost = metrics.tokenCount * 0.00003;
+                    onMetrics?.(metrics);
+                    yield { chunk: text, metrics };
+                }
+            }
+        } else if (config.provider === "openai" || config.provider === "groq") {
+            const stream = await (client as OpenAI).chat.completions.create({
+                model: config.model,
+                messages: formatMessages(testCase, modifiedConfig),
+                temperature: config.temperature,
+                max_tokens: Math.min(config.maxTokens, maxTokens),
+                stream: true
+            });
+
+            for await (const chunk of stream) {
+                const text = chunk.choices[0]?.delta?.content || "";
+                if (text) {
+                    metrics.tokenCount += text.split(/\s+/).length;
+                    metrics.estimatedCost = metrics.tokenCount * (config.provider === "groq" ? 0.000001 : 0.00001);
+                    onMetrics?.(metrics);
+                    yield { chunk: text, metrics };
+                }
+            }
+        } else {
+            throw new Error(`Streaming not supported for provider: ${config.provider}`);
         }
-      }
-    } else if (config.provider === "openai" || config.provider === "groq") {
-      const stream = await (client as OpenAI).chat.completions.create({
-        model: config.model,
-        messages: formatMessages(testCase, modifiedConfig),
-        temperature: config.temperature,
-        max_tokens: config.maxTokens,
-        stream: true
-      });
 
-      for await (const chunk of stream) {
-        const text = chunk.choices[0]?.delta?.content || "";
-        metrics.tokenCount += text.split(/\s+/).length; // Rough estimation
-        metrics.estimatedCost = metrics.tokenCount * (COST_PER_TOKEN[config.model as keyof typeof COST_PER_TOKEN] || 0.00001);
+        metrics.endTime = Date.now();
         onMetrics?.(metrics);
-        yield { chunk: text, metrics };
-      }
-    } else {
-      throw new Error(`Streaming not supported for provider: ${config.provider}`);
+    } catch (error) {
+        handleApiError(error);
     }
-
-    metrics.endTime = Date.now();
-    onMetrics?.(metrics);
-  } catch (error) {
-    handleApiError(error);
-    return;
-  }
 }
 
 export async function compareModels(
-  prompt: string,
-  testCase: string,
-  configs: ModelConfig[],
-  onProgress: (modelIndex: number, chunk: string, metrics: StreamMetrics) => void
+    prompt: string,
+    testCase: string,
+    configs: ModelConfig[],
+    onProgress: (modelIndex: number, chunk: string, metrics: StreamMetrics) => void
 ): Promise<void> {
-  const streams = configs.map((config, index) => {
-    const stream = streamResponse(prompt, testCase, config, (metrics) => {
-      onProgress(index, "", metrics);
+    const streams = configs.map((config, index) => {
+        const stream = streamResponse(prompt, testCase, config, (metrics) => {
+            onProgress(index, "", metrics);
+        });
+        return { stream, index };
     });
-    return { stream, index };
-  });
 
-  await Promise.all(
-    streams.map(async ({ stream, index }) => {
-      for await (const { chunk, metrics } of stream) {
-        onProgress(index, chunk, metrics);
-      }
-    })
-  );
+    await Promise.all(
+        streams.map(async ({ stream, index }) => {
+            try {
+                for await (const { chunk, metrics } of stream) {
+                    onProgress(index, chunk, metrics);
+                }
+            } catch (error) {
+                console.error(`Error in model comparison for index ${index}:`, error);
+                onProgress(index, `Error: ${error.message}`, {
+                    startTime: Date.now(),
+                    tokenCount: 0,
+                    estimatedCost: 0
+                });
+            }
+        })
+    );
 }
 
 // the newest OpenAI model is "gpt-4o" which was released May 13, 2024. do not change this unless explicitly requested by the user
 export async function generateMetaPrompt(
-  input: MetaPromptInput,
-  config: ModelConfig
+    input: MetaPromptInput,
+    config: ModelConfig
 ): Promise<string> {
-  const prompt = `Given this request for an AI assistant: "${input.baseInput}"
+    const prompt = `Given this request for an AI assistant: "${input.baseInput}"
 
 Create a comprehensive meta-prompt that includes:
 1. Extracted AI Role
@@ -219,42 +246,42 @@ Format the response as a detailed prompt with clear sections for:
 - Constraints & Safety
 - Example Responses`;
 
-  try {
-    const client = getClient(config);
-    const messages = formatMessages(prompt, config);
+    try {
+        const client = getClient(config);
+        const messages = formatMessages(prompt, config);
 
-    if (config.provider === "anthropic") {
-      const response = await (client as Anthropic).messages.create({
-        model: config.model,
-        max_tokens: config.maxTokens,
-        temperature: config.temperature,
-        messages: messages.map(msg => ({
-          role: msg.role === "system" ? "assistant" : msg.role,
-          content: msg.content
-        }))
-      });
-      return response.content[0].text || "";
-    } else {
-      const response = await (client as OpenAI).chat.completions.create({
-        model: config.model,
-        messages,
-        temperature: config.temperature,
-        max_tokens: config.maxTokens
-      });
-      return response.choices[0].message.content || "";
+        if (config.provider === "anthropic") {
+            const response = await (client as Anthropic).messages.create({
+                model: config.model,
+                max_tokens: config.maxTokens,
+                temperature: config.temperature,
+                messages: messages.map(msg => ({
+                    role: msg.role === "system" ? "assistant" : msg.role,
+                    content: msg.content
+                }))
+            });
+            return response.content[0].text || "";
+        } else {
+            const response = await (client as OpenAI).chat.completions.create({
+                model: config.model,
+                messages,
+                temperature: config.temperature,
+                max_tokens: config.maxTokens
+            });
+            return response.choices[0].message.content || "";
+        }
+    } catch (error) {
+        handleApiError(error);
+        return "";
     }
-  } catch (error) {
-    handleApiError(error);
-    return "";
-  }
 }
 
 export async function generateVariations(
-  metaPrompt: string,
-  count: number = 3,
-  config: ModelConfig
+    metaPrompt: string,
+    count: number = 3,
+    config: ModelConfig
 ): Promise<string[]> {
-  const prompt = `Generate exactly ${count} detailed variations of the following meta prompt:
+    const prompt = `Generate exactly ${count} detailed variations of the following meta prompt:
 
 ${metaPrompt}
 
@@ -279,64 +306,63 @@ Return ONLY a JSON object with this exact structure, containing exactly ${count}
 }
 Important: The response must contain exactly ${count} variations, no more and no less.`;
 
-  const client = getClient(config);
-  try {
-    let content: string;
-
-    if (config.provider === "anthropic") {
-      const response = await (client as Anthropic).messages.create({
-        model: config.model,
-        max_tokens: Math.max(config.maxTokens, 4096),
-        temperature: config.temperature,
-        messages: formatMessages(prompt, config).map(msg => ({
-          role: msg.role === "system" ? "assistant" : msg.role,
-          content: msg.content
-        }))
-      });
-      content = response.content[0].text || "";
-    } else {
-      const response = await (client as OpenAI).chat.completions.create({
-        model: config.model,
-        messages: formatMessages(prompt, config),
-        temperature: config.temperature,
-        max_tokens: Math.max(config.maxTokens, 4096),
-        response_format: { type: "json_object" }
-      });
-      content = response.choices[0].message.content || "";
-    }
-
+    const client = getClient(config);
     try {
-      const result = JSON.parse(content);
-      if (!Array.isArray(result.variations)) {
-        console.error("Invalid response format - variations is not an array");
-        return [];
-      }
+        let content: string;
 
-      // Ensure we have exactly the requested number of variations
-      if (result.variations.length !== count) {
-        console.warn(`Expected ${count} variations but received ${result.variations.length}`);
-      }
+        if (config.provider === "anthropic") {
+            const response = await (client as Anthropic).messages.create({
+                model: config.model,
+                max_tokens: Math.max(config.maxTokens, 4096),
+                temperature: config.temperature,
+                messages: formatMessages(prompt, config).map(msg => ({
+                    role: msg.role === "system" ? "assistant" : msg.role,
+                    content: msg.content
+                }))
+            });
+            content = response.content[0].text || "";
+        } else {
+            const response = await (client as OpenAI).chat.completions.create({
+                model: config.model,
+                messages: formatMessages(prompt, config),
+                temperature: config.temperature,
+                max_tokens: Math.max(config.maxTokens, 4096),
+                response_format: { type: "json_object" }
+            });
+            content = response.choices[0].message.content || "";
+        }
 
-      return result.variations
-        .slice(0, count)
-        .map((v: any) => typeof v === 'string' ? v : JSON.stringify(v));
+        try {
+            const result = JSON.parse(content);
+            if (!Array.isArray(result.variations)) {
+                console.error("Invalid response format - variations is not an array");
+                return [];
+            }
+
+            if (result.variations.length !== count) {
+                console.warn(`Expected ${count} variations but received ${result.variations.length}`);
+            }
+
+            return result.variations
+                .slice(0, count)
+                .map((v: any) => typeof v === 'string' ? v : JSON.stringify(v));
+        } catch (error) {
+            console.error("JSON Parse Error:", error);
+            return [];
+        }
     } catch (error) {
-      console.error("JSON Parse Error:", error);
-      return [];
+        console.error("API Error:", error);
+        throw error;
     }
-  } catch (error) {
-    console.error("API Error:", error);
-    throw error;
-  }
 }
 
 export async function evaluatePrompt(
-  prompt: string,
-  testCase: string,
-  criteria: Record<string, number>,
-  config: ModelConfig
+    prompt: string,
+    testCase: string,
+    criteria: Record<string, number>,
+    config: ModelConfig
 ): Promise<Record<string, number>> {
-  const evaluationPrompt = `You are an objective evaluator. Analyze the following response against a test case and provide numerical scores.
+    const evaluationPrompt = `You are an objective evaluator. Analyze the following response against a test case and provide numerical scores.
 
 Input Test Case: "${testCase}"
 
@@ -351,67 +377,65 @@ Return ONLY a JSON object with exactly these scores, no other text. Example form
   "anotherCriterion": 0.92
 }`;
 
-  const client = getClient(config);
-  try {
-    let content: string;
-
-    if (config.provider === "anthropic") {
-      const response = await (client as Anthropic).messages.create({
-        model: config.model,
-        max_tokens: config.maxTokens,
-        temperature: config.temperature,
-        messages: formatMessages(evaluationPrompt, config).map(msg => ({
-          role: msg.role === "system" ? "assistant" : msg.role,
-          content: msg.content
-        }))
-      });
-      content = response.content[0].text || "";
-    } else {
-      const response = await (client as OpenAI).chat.completions.create({
-        model: config.model,
-        messages: formatMessages(evaluationPrompt, config),
-        temperature: config.temperature,
-        max_tokens: config.maxTokens,
-        response_format: { type: "json_object" }
-      });
-      content = response.choices[0].message.content || "";
-    }
-
+    const client = getClient(config);
     try {
-      const result = JSON.parse(content.trim());
-      // Validate that all required criteria are present and scores are in range
-      const validatedScores: Record<string, number> = {};
-      Object.keys(criteria).forEach(key => {
-        const score = result[key];
-        if (typeof score !== 'number' || score < 0 || score > 1) {
-          validatedScores[key] = 0.5; // Default score if invalid
+        let content: string;
+
+        if (config.provider === "anthropic") {
+            const response = await (client as Anthropic).messages.create({
+                model: config.model,
+                max_tokens: config.maxTokens,
+                temperature: config.temperature,
+                messages: formatMessages(evaluationPrompt, config).map(msg => ({
+                    role: msg.role === "system" ? "assistant" : msg.role,
+                    content: msg.content
+                }))
+            });
+            content = response.content[0].text || "";
         } else {
-          validatedScores[key] = score;
+            const response = await (client as OpenAI).chat.completions.create({
+                model: config.model,
+                messages: formatMessages(evaluationPrompt, config),
+                temperature: config.temperature,
+                max_tokens: config.maxTokens,
+                response_format: { type: "json_object" }
+            });
+            content = response.choices[0].message.content || "";
         }
-      });
-      return validatedScores;
-    } catch (parseError) {
-      console.error("Failed to parse evaluation response:", parseError);
-      console.error("Raw content:", content);
-      // Return default scores if parsing fails
-      return Object.keys(criteria).reduce((acc, key) => ({ ...acc, [key]: 0.5 }), {});
+
+        try {
+            const result = JSON.parse(content.trim());
+            const validatedScores: Record<string, number> = {};
+            Object.keys(criteria).forEach(key => {
+                const score = result[key];
+                if (typeof score !== 'number' || score < 0 || score > 1) {
+                    validatedScores[key] = 0.5;
+                } else {
+                    validatedScores[key] = score;
+                }
+            });
+            return validatedScores;
+        } catch (parseError) {
+            console.error("Failed to parse evaluation response:", parseError);
+            console.error("Raw content:", content);
+            return Object.keys(criteria).reduce((acc, key) => ({ ...acc, [key]: 0.5 }), {});
+        }
+    } catch (error) {
+        handleApiError(error);
+        return Object.keys(criteria).reduce((acc, key) => ({ ...acc, [key]: 0 }), {});
     }
-  } catch (error) {
-    handleApiError(error);
-    return Object.keys(criteria).reduce((acc, key) => ({ ...acc, [key]: 0 }), {});
-  }
 }
 
 export async function generateTestCases(
-  baseInput: string,
-  metaPrompt: string,
-  variations: string[],
-  config: ModelConfig
+    baseInput: string,
+    metaPrompt: string,
+    variations: string[],
+    config: ModelConfig
 ): Promise<{
-  input: string;
-  criteria: Record<string, number>;
+    input: string;
+    criteria: Record<string, number>;
 }[]> {
-  const prompt = `Given this context:
+    const prompt = `Given this context:
 Base Input: "${baseInput}"
 Meta Prompt: "${metaPrompt}"
 Generated Variations:
@@ -435,79 +459,78 @@ Return ONLY a JSON object with this structure:
   ]
 }`;
 
-  const client = getClient(config);
-  try {
-    let content: string;
+    const client = getClient(config);
+    try {
+        let content: string;
 
-    if (config.provider === "anthropic") {
-      const response = await (client as Anthropic).messages.create({
-        model: config.model,
-        max_tokens: config.maxTokens,
-        temperature: config.temperature,
-        messages: formatMessages(prompt, config).map(msg => ({
-          role: msg.role === "system" ? "assistant" : msg.role,
-          content: msg.content
-        }))
-      });
-      content = response.content[0].text || "";
-    } else {
-      const response = await (client as OpenAI).chat.completions.create({
-        model: config.model,
-        messages: formatMessages(prompt, config),
-        temperature: config.temperature,
-        max_tokens: config.maxTokens,
-        response_format: { type: "json_object" }
-      });
-      content = response.choices[0].message.content || "";
+        if (config.provider === "anthropic") {
+            const response = await (client as Anthropic).messages.create({
+                model: config.model,
+                max_tokens: config.maxTokens,
+                temperature: config.temperature,
+                messages: formatMessages(prompt, config).map(msg => ({
+                    role: msg.role === "system" ? "assistant" : msg.role,
+                    content: msg.content
+                }))
+            });
+            content = response.content[0].text || "";
+        } else {
+            const response = await (client as OpenAI).chat.completions.create({
+                model: config.model,
+                messages: formatMessages(prompt, config),
+                temperature: config.temperature,
+                max_tokens: config.maxTokens,
+                response_format: { type: "json_object" }
+            });
+            content = response.choices[0].message.content || "";
+        }
+
+        if (!content) {
+            return [];
+        }
+
+        const result = JSON.parse(content);
+        return result.testCases || [];
+    } catch (error) {
+        console.error("Test Case Generation Error:", error);
+        return [];
     }
-
-    if (!content) {
-      return [];
-    }
-
-    const result = JSON.parse(content);
-    return result.testCases || [];
-  } catch (error) {
-    console.error("Test Case Generation Error:", error);
-    return [];
-  }
 }
 
 export async function generateResponse(
-  prompt: string,
-  testCase: string,
-  config: ModelConfig
+    prompt: string,
+    testCase: string,
+    config: ModelConfig
 ): Promise<string> {
-  const client = getClient(config);
-  try {
-    // Use the variation as the system prompt
-    const modifiedConfig = {
-      ...config,
-      systemPrompt: prompt // The prompt variation becomes the system prompt
-    };
+    const client = getClient(config);
+    try {
+        const modifiedConfig = {
+            ...config,
+            systemPrompt: prompt
+        };
 
-    if (config.provider === "anthropic") {
-      const response = await (client as Anthropic).messages.create({
-        model: config.model,
-        max_tokens: config.maxTokens,
-        temperature: config.temperature,
-        messages: formatMessages(testCase, modifiedConfig).map(msg => ({
-          role: msg.role === "system" ? "assistant" : msg.role,
-          content: msg.content
-        }))
-      });
-      return response.content[0].text || "";
-    } else {
-      const response = await (client as OpenAI).chat.completions.create({
-        model: config.model,
-        messages: formatMessages(testCase, modifiedConfig),
-        temperature: config.temperature,
-        max_tokens: config.maxTokens
-      });
-      return response.choices[0].message.content || "";
+        if (config.provider === "anthropic") {
+            const response = await (client as Anthropic).messages.create({
+                model: config.model,
+                max_tokens: config.maxTokens,
+                temperature: config.temperature,
+                messages: formatMessages(testCase, modifiedConfig).map(msg => ({
+                    role: msg.role === "system" ? "assistant" : msg.role,
+                    content: msg.content
+                }))
+            });
+            return response.content[0].text || "";
+        } else {
+            const response = await (client as OpenAI).chat.completions.create({
+                model: config.model,
+                messages: formatMessages(testCase, modifiedConfig),
+                temperature: config.temperature,
+                max_tokens: config.maxTokens
+            });
+            return response.choices[0].message.content || "";
+        }
+    } catch (error) {
+        handleApiError(error);
+        return "";
     }
-  } catch (error) {
-    handleApiError(error);
-    return "";
-  }
 }

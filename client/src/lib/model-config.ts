@@ -20,11 +20,11 @@ export const MODEL_CONFIGS = {
   anthropic: {
     name: "Anthropic",
     models: [
-      { id: "claude-3-5-sonnet-20241022", name: "Claude 3.5 Sonnet", maxTokens: 200000 },
-      { id: "claude-3-5-haiku-20241022", name: "Claude 3.5 Haiku", maxTokens: 200000 },
-      { id: "claude-3-opus-20240229", name: "Claude 3 Opus", maxTokens: 200000 },
-      { id: "claude-3-sonnet-20240229", name: "Claude 3 Sonnet", maxTokens: 200000 },
-      { id: "claude-3-haiku-20240307", name: "Claude 3 Haiku", maxTokens: 200000 }
+      { id: "claude-3-5-sonnet-20241022", name: "Claude 3.5 Sonnet", maxTokens: 8192 },
+      { id: "claude-3-5-haiku-20241022", name: "Claude 3.5 Haiku", maxTokens: 8192 },
+      { id: "claude-3-opus-20240229", name: "Claude 3 Opus", maxTokens: 8192 },
+      { id: "claude-3-sonnet-20240229", name: "Claude 3 Sonnet", maxTokens: 8192 },
+      { id: "claude-3-haiku-20240307", name: "Claude 3 Haiku", maxTokens: 8192 }
     ]
   },
   gemini: {
