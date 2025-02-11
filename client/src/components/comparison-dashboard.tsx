@@ -24,9 +24,8 @@ import { ModelSettingsSection, type ModelConfig } from "@/components/settings/mo
 import { EvaluationCriteriaManager } from "./evaluation-criteria-manager";
 import type { EvaluationCriterion, EvaluationResult } from "@shared/schema";
 import { Button } from "@/components/ui/button";
-import { ModelSelector } from "./model-arena/model-selector";
+import { ModelArena } from "./model-arena/model-arena";
 import type { StreamMetrics } from "@/lib/openai";
-import { ModelArena } from "@/components/model-arena/model-arena"; // Added import statement
 
 interface ComparisonDashboardProps {
   variations: string[];
@@ -58,10 +57,10 @@ const calculatePromptMetrics = (results: ComparisonDashboardProps["modelResults"
     return acc + (result.metrics.tokenCount / (duration / 1000));
   }, 0) / results.length;
 
-  const avgCost = results.reduce((acc, result) =>
+  const avgCost = results.reduce((acc, result) => 
     acc + result.metrics.estimatedCost, 0) / results.length;
 
-  const totalTokens = results.reduce((acc, result) =>
+  const totalTokens = results.reduce((acc, result) => 
     acc + result.metrics.tokenCount, 0);
 
   const avgResponseTime = results.reduce((acc, result) => {
@@ -130,11 +129,10 @@ export function ComparisonDashboard({
   modelResults
 }: ComparisonDashboardProps) {
   const [criteria, setCriteria] = useState<EvaluationCriterion[]>(defaultCriteria);
-  const [selectedModelConfigs, setSelectedModelConfigs] = useState<ModelConfig[]>([]);
 
   // Calculate metrics for each prompt variation
   const promptMetrics = variations.map((variation, index) => {
-    const variationResults = modelResults.filter((_, i) =>
+    const variationResults = modelResults.filter((_, i) => 
       Math.floor(i / testCases.length) === index
     );
     return {
@@ -150,13 +148,13 @@ export function ComparisonDashboard({
   });
 
   // Sort prompt variations by different metrics
-  const byTokensPerSec = [...promptMetrics].sort((a, b) =>
+  const byTokensPerSec = [...promptMetrics].sort((a, b) => 
     b.metrics.avgTokensPerSec - a.metrics.avgTokensPerSec
   );
-  const byCost = [...promptMetrics].sort((a, b) =>
+  const byCost = [...promptMetrics].sort((a, b) => 
     a.metrics.avgCost - b.metrics.avgCost
   );
-  const byTokens = [...promptMetrics].sort((a, b) =>
+  const byTokens = [...promptMetrics].sort((a, b) => 
     a.metrics.totalTokens - b.metrics.totalTokens
   );
 
@@ -231,15 +229,6 @@ export function ComparisonDashboard({
         />
       </div>
 
-      {/* Add ModelSelector at the top level */}
-      <Card className="p-4">
-        <h3 className="text-lg font-semibold mb-4">Select Models for Comparison</h3>
-        <ModelSelector
-          onModelConfigsChange={setSelectedModelConfigs}
-          selectedConfigs={selectedModelConfigs}
-        />
-      </Card>
-
       <EvaluationCriteriaManager
         criteria={criteria}
         onAddCriterion={(criterion) => {
@@ -253,6 +242,15 @@ export function ComparisonDashboard({
         }}
         defaultModelConfig={modelConfig}
       />
+
+      <div className="flex justify-end">
+        <Button
+          onClick={() => onEvaluate(criteria)}
+          disabled={isEvaluating}
+        >
+          {isEvaluating ? "Evaluating..." : "Run Evaluation"}
+        </Button>
+      </div>
 
       {evaluationResults.length > 0 && (
         <>
@@ -364,8 +362,8 @@ export function ComparisonDashboard({
                   <div key={index} className="flex items-center gap-2">
                     <Medal className={`w-5 h-5 ${
                       index === 0 ? "text-yellow-500" :
-                        index === 1 ? "text-gray-400" :
-                          "text-amber-700"
+                      index === 1 ? "text-gray-400" :
+                      "text-amber-700"
                     }`} />
                     <span>Variation {prompt.index + 1}:</span>
                     <span className="font-mono">
@@ -384,8 +382,8 @@ export function ComparisonDashboard({
                   <div key={index} className="flex items-center gap-2">
                     <Medal className={`w-5 h-5 ${
                       index === 0 ? "text-yellow-500" :
-                        index === 1 ? "text-gray-400" :
-                          "text-amber-700"
+                      index === 1 ? "text-gray-400" :
+                      "text-amber-700"
                     }`} />
                     <span>Variation {prompt.index + 1}:</span>
                     <span className="font-mono">
@@ -404,8 +402,8 @@ export function ComparisonDashboard({
                   <div key={index} className="flex items-center gap-2">
                     <Medal className={`w-5 h-5 ${
                       index === 0 ? "text-yellow-500" :
-                        index === 1 ? "text-gray-400" :
-                          "text-amber-700"
+                      index === 1 ? "text-gray-400" :
+                      "text-amber-700"
                     }`} />
                     <span>Variation {prompt.index + 1}:</span>
                     <span className="font-mono">
@@ -453,7 +451,6 @@ export function ComparisonDashboard({
         </div>
       )}
 
-      {/* Updated ModelArena mapping */}
       {testCases.map((testCase) => (
         variations.map((variation, variationIndex) => (
           <ModelArena
@@ -461,7 +458,19 @@ export function ComparisonDashboard({
             testCase={testCase.input}
             promptVariation={variation}
             promptVariationIndex={variationIndex}
-            modelConfigs={selectedModelConfigs}
+            modelConfigs={[
+              metaPromptConfig,
+              {
+                ...metaPromptConfig,
+                provider: "anthropic",
+                model: "claude-3"
+              },
+              {
+                ...metaPromptConfig,
+                provider: "groq",
+                model: "llama2"
+              }
+            ]}
             onStartComparison={(configs) =>
               onCompareModels(variation, testCase.input, configs)
             }

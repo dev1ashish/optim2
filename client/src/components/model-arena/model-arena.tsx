@@ -7,6 +7,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { ModelConfig } from "@/components/settings/model-settings-section";
 import { Gauge, LineChart } from "lucide-react";
 import type { StreamMetrics } from "@/lib/openai";
+import { ModelSelector } from "./model-selector";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import {
   BarChart,
@@ -45,11 +46,12 @@ export function ModelArena({
   results
 }: ModelArenaProps) {
   const [isComparing, setIsComparing] = useState(false);
+  const [selectedConfigs, setSelectedConfigs] = useState<ModelConfig[]>(modelConfigs);
 
   const handleStartComparison = async () => {
     setIsComparing(true);
     try {
-      await onStartComparison(modelConfigs);
+      await onStartComparison(selectedConfigs);
     } finally {
       setIsComparing(false);
     }
@@ -110,6 +112,8 @@ export function ModelArena({
         <p className="mt-1 text-sm font-mono">{promptVariation}</p>
       </div>
 
+      <ModelSelector onModelConfigsChange={setSelectedConfigs} />
+
       <div className="space-y-4">
         <div className="bg-muted p-3 rounded">
           <Label>Test Input:</Label>
@@ -118,7 +122,7 @@ export function ModelArena({
 
         <Button 
           onClick={handleStartComparison}
-          disabled={isComparing || modelConfigs.length === 0}
+          disabled={isComparing || selectedConfigs.length === 0}
         >
           {isComparing ? "Comparing..." : "Start Comparison"}
         </Button>

@@ -1,47 +1,38 @@
 import { useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Button } from "@/components/ui/button";
-import { MODEL_CONFIGS } from "@/lib/model-config";
+import { MODEL_CONFIGS, getDefaultConfig } from "@/lib/model-config";
 import type { ModelConfig } from "@/components/settings/model-settings-section";
 
 interface ModelSelectorProps {
   onModelConfigsChange: (configs: ModelConfig[]) => void;
-  selectedConfigs: ModelConfig[];
 }
 
-export function ModelSelector({ onModelConfigsChange, selectedConfigs }: ModelSelectorProps) {
-  const [selectedProviders, setSelectedProviders] = useState<Record<string, boolean>>(
-    Object.fromEntries(
-      Object.keys(MODEL_CONFIGS).map(provider => [
-        provider,
-        selectedConfigs.some(config => config.provider === provider)
-      ])
-    )
-  );
-  const [selectedModels, setSelectedModels] = useState<Record<string, string[]>>(
-    Object.fromEntries(
-      Object.entries(MODEL_CONFIGS).map(([provider, _]) => [
-        provider,
-        selectedConfigs
-          .filter(config => config.provider === provider)
-          .map(config => config.model)
-      ])
-    )
-  );
+export function ModelSelector({ onModelConfigsChange }: ModelSelectorProps) {
+  const [selectedProviders, setSelectedProviders] = useState<Record<string, boolean>>({});
+  const [apiKeys, setApiKeys] = useState<Record<string, string>>({});
+  const [selectedModels, setSelectedModels] = useState<Record<string, string[]>>({});
 
   const handleProviderToggle = (provider: string, checked: boolean) => {
     setSelectedProviders(prev => ({ ...prev, [provider]: checked }));
     if (!checked) {
-      // Remove selected models when provider is deselected
+      // Remove API key and selected models when provider is deselected
+      const { [provider]: _, ...restApiKeys } = apiKeys;
       const { [provider]: __, ...restModels } = selectedModels;
+      setApiKeys(restApiKeys);
       setSelectedModels(restModels);
     } else {
       // Initialize empty array for selected models when provider is selected
       setSelectedModels(prev => ({ ...prev, [provider]: [] }));
     }
+  };
+
+  const handleApiKeyChange = (provider: string, key: string) => {
+    setApiKeys(prev => ({ ...prev, [provider]: key }));
   };
 
   const handleModelToggle = (provider: string, modelId: string, checked: boolean) => {
@@ -59,8 +50,8 @@ export function ModelSelector({ onModelConfigsChange, selectedConfigs }: ModelSe
       .flatMap(([provider]) => {
         const providerModels = selectedModels[provider] || [];
         return providerModels.map(modelId => ({
-          ...MODEL_CONFIGS[provider as keyof typeof MODEL_CONFIGS].models.find(m => m.id === modelId)!,
-          provider: provider as ModelConfig["provider"]
+          ...getDefaultConfig(provider, modelId),
+          apiKey: apiKeys[provider]
         }));
       });
     onModelConfigsChange(configs);
@@ -82,7 +73,17 @@ export function ModelSelector({ onModelConfigsChange, selectedConfigs }: ModelSe
             </div>
 
             {selectedProviders[provider] && (
-              <div className="ml-6">
+              <div className="ml-6 space-y-2">
+                <div>
+                  <Label className="text-sm">API Key</Label>
+                  <Input
+                    type="password"
+                    value={apiKeys[provider] || ""}
+                    onChange={(e) => handleApiKeyChange(provider, e.target.value)}
+                    placeholder={`Enter ${config.name} API Key`}
+                  />
+                </div>
+
                 <div>
                   <Label className="text-sm">Models</Label>
                   <ScrollArea className="h-40 rounded border p-2">

@@ -27,6 +27,7 @@ export interface ModelConfig {
   model: string;
   temperature: number;
   maxTokens: number;
+  apiKey?: string;
   systemPrompt?: string;
 }
 
@@ -56,15 +57,26 @@ export function ModelSettingsSection({
   onUseDefaultSettingsChange
 }: ModelSettingsSectionProps) {
   const [open, setOpen] = useState(false);
+  const [apiKey, setApiKey] = useState(config.apiKey || "");
   const [systemPrompt, setSystemPrompt] = useState(config.systemPrompt || "");
   const { toast } = useToast();
 
   useEffect(() => {
+    setApiKey(config.apiKey || "");
     setSystemPrompt(config.systemPrompt || "");
-  }, [config.systemPrompt]);
+  }, [config.apiKey, config.systemPrompt]);
 
   const handleSave = () => {
-    onChange({ ...config, systemPrompt });
+    if (!useDefaultSettings && !apiKey) {
+      toast({
+        title: "API Key Required",
+        description: "Please enter your API key to continue",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    onChange({ ...config, apiKey, systemPrompt });
     setOpen(false);
     toast({
       title: "Settings Saved",
@@ -98,6 +110,16 @@ export function ModelSettingsSection({
 
           {!useDefaultSettings && (
             <>
+              <div className="grid gap-2">
+                <Label>API Key</Label>
+                <Input
+                  type="password"
+                  value={apiKey}
+                  onChange={(e) => setApiKey(e.target.value)}
+                  placeholder={`Enter your ${config.provider} API key`}
+                />
+              </div>
+
               <div className="grid gap-2">
                 <Label>System Prompt</Label>
                 <Textarea

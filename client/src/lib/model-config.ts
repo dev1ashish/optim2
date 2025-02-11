@@ -50,33 +50,21 @@ export const MODEL_CONFIGS = {
 } as const;
 
 // Helper to get default configuration for a model
-export const getDefaultConfig = (provider: Provider, modelId: string): ModelConfig => {
-  // Get API key from localStorage
-  const storedKeys = localStorage.getItem('api_keys');
-  const apiKeys = storedKeys ? JSON.parse(storedKeys) : {};
-  const apiKeyMap: Record<Provider, string> = {
-    openai: apiKeys.OPENAI_API_KEY || "",
-    anthropic: apiKeys.ANTHROPIC_API_KEY || "",
-    gemini: apiKeys.GEMINI_API_KEY || "",
-    groq: apiKeys.GROQ_API_KEY || ""
-  };
-
-  return {
-    provider,
-    model: modelId,
-    temperature: 0.7,
-    maxTokens: MODEL_CONFIGS[provider].models.find(m => m.id === modelId)?.maxTokens || 4096,
-    apiKey: apiKeyMap[provider],
-    systemPrompt: "",
-    responseFormat: { type: "json_object" },
-    // Provider specific settings
-    topP: 1,
-    frequencyPenalty: 0,
-    presencePenalty: 0,
-    seed: undefined,
-    tools: undefined,
-    toolChoice: undefined,
-    topK: undefined,
-    stopSequences: undefined
-  };
-};
+export const getDefaultConfig = (provider: Provider, modelId: string): ModelConfig => ({
+  provider,
+  model: modelId,
+  temperature: 0.7,
+  maxTokens: MODEL_CONFIGS[provider].models.find(m => m.id === modelId)?.maxTokens || 4096,
+  apiKey: "",
+  systemPrompt: "",
+  responseFormat: { type: "json_object" },
+  // Provider specific settings
+  topP: 1,
+  frequencyPenalty: 0,
+  presencePenalty: 0,
+  seed: undefined,
+  tools: undefined,
+  toolChoice: undefined,
+  topK: undefined,
+  stopSequences: undefined
+});
