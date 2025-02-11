@@ -12,6 +12,9 @@ import { Settings } from "lucide-react";
 import {
   Dialog,
   DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
   DialogTrigger,
 } from "@/components/ui/dialog";
 
@@ -53,6 +56,12 @@ function App() {
           </Button>
         </DialogTrigger>
         <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>API Settings</DialogTitle>
+            <DialogDescription>
+              Manage your API keys for all AI providers in one place.
+            </DialogDescription>
+          </DialogHeader>
           <ApiSettings 
             onApiKeysSet={() => {
               setApiKeysSet(true);

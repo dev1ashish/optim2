@@ -54,9 +54,9 @@ export function ApiSettings({ onApiKeysSet }: ApiSettingsProps) {
   return (
     <Card className="p-6 space-y-6">
       <div>
-        <h2 className="text-2xl font-bold mb-4">API Settings</h2>
+        <h2 className="text-2xl font-bold mb-4">Global API Settings</h2>
         <p className="text-muted-foreground">
-          Configure your API keys for different AI providers. These keys will be used across all comparisons.
+          Configure your API keys here once, and they will be used across all features of the application. These keys are stored securely in your browser's local storage.
         </p>
       </div>
 
