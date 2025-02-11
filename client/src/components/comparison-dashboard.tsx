@@ -57,10 +57,10 @@ const calculatePromptMetrics = (results: ComparisonDashboardProps["modelResults"
     return acc + (result.metrics.tokenCount / (duration / 1000));
   }, 0) / results.length;
 
-  const avgCost = results.reduce((acc, result) => 
+  const avgCost = results.reduce((acc, result) =>
     acc + result.metrics.estimatedCost, 0) / results.length;
 
-  const totalTokens = results.reduce((acc, result) => 
+  const totalTokens = results.reduce((acc, result) =>
     acc + result.metrics.tokenCount, 0);
 
   const avgResponseTime = results.reduce((acc, result) => {
@@ -132,7 +132,7 @@ export function ComparisonDashboard({
 
   // Calculate metrics for each prompt variation
   const promptMetrics = variations.map((variation, index) => {
-    const variationResults = modelResults.filter((_, i) => 
+    const variationResults = modelResults.filter((_, i) =>
       Math.floor(i / testCases.length) === index
     );
     return {
@@ -148,13 +148,13 @@ export function ComparisonDashboard({
   });
 
   // Sort prompt variations by different metrics
-  const byTokensPerSec = [...promptMetrics].sort((a, b) => 
+  const byTokensPerSec = [...promptMetrics].sort((a, b) =>
     b.metrics.avgTokensPerSec - a.metrics.avgTokensPerSec
   );
-  const byCost = [...promptMetrics].sort((a, b) => 
+  const byCost = [...promptMetrics].sort((a, b) =>
     a.metrics.avgCost - b.metrics.avgCost
   );
-  const byTokens = [...promptMetrics].sort((a, b) => 
+  const byTokens = [...promptMetrics].sort((a, b) =>
     a.metrics.totalTokens - b.metrics.totalTokens
   );
 
@@ -213,6 +213,24 @@ export function ComparisonDashboard({
   const metaPrompt = "This is a meta prompt"; // Placeholder, replace with actual meta prompt
   const metaPromptConfig = modelConfig; // Placeholder, adjust as needed
 
+
+  const bestCombinations = variations.flatMap((variation, varIndex) => {
+    return modelResults
+      .filter((_, i) => Math.floor(i / testCases.length) === varIndex)
+      .map(result => ({
+        variation,
+        varIndex,
+        ...result,
+        avgTokensPerSec: (result.metrics.tokenCount / ((result.metrics.endTime || Date.now()) - result.metrics.startTime)) * 1000
+      }));
+  }).sort((a, b) => {
+    // First by cost efficiency (lowest cost)
+    const costDiff = a.metrics.estimatedCost - b.metrics.estimatedCost;
+    if (Math.abs(costDiff) > 0.0001) return costDiff;
+
+    // Then by speed (highest tokens/sec)
+    return b.avgTokensPerSec - a.avgTokensPerSec;
+  });
 
   return (
     <Card className="p-6 space-y-8">
@@ -362,8 +380,8 @@ export function ComparisonDashboard({
                   <div key={index} className="flex items-center gap-2">
                     <Medal className={`w-5 h-5 ${
                       index === 0 ? "text-yellow-500" :
-                      index === 1 ? "text-gray-400" :
-                      "text-amber-700"
+                        index === 1 ? "text-gray-400" :
+                          "text-amber-700"
                     }`} />
                     <span>Variation {prompt.index + 1}:</span>
                     <span className="font-mono">
@@ -382,8 +400,8 @@ export function ComparisonDashboard({
                   <div key={index} className="flex items-center gap-2">
                     <Medal className={`w-5 h-5 ${
                       index === 0 ? "text-yellow-500" :
-                      index === 1 ? "text-gray-400" :
-                      "text-amber-700"
+                        index === 1 ? "text-gray-400" :
+                          "text-amber-700"
                     }`} />
                     <span>Variation {prompt.index + 1}:</span>
                     <span className="font-mono">
@@ -402,8 +420,8 @@ export function ComparisonDashboard({
                   <div key={index} className="flex items-center gap-2">
                     <Medal className={`w-5 h-5 ${
                       index === 0 ? "text-yellow-500" :
-                      index === 1 ? "text-gray-400" :
-                      "text-amber-700"
+                        index === 1 ? "text-gray-400" :
+                          "text-amber-700"
                     }`} />
                     <span>Variation {prompt.index + 1}:</span>
                     <span className="font-mono">
@@ -414,6 +432,36 @@ export function ComparisonDashboard({
               </div>
             </Card>
           </div>
+
+          <Card className="p-4">
+            <h3 className="font-semibold mb-4">Best Prompt-Model Combinations</h3>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Rank</TableHead>
+                  <TableHead>Prompt Variation</TableHead>
+                  <TableHead>Model</TableHead>
+                  <TableHead>Cost</TableHead>
+                  <TableHead>Tokens/sec</TableHead>
+                  <TableHead>Total Tokens</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {bestCombinations.slice(0, 5).map((result, index) => (
+                  <TableRow key={index}>
+                    <TableCell>#{index + 1}</TableCell>
+                    <TableCell>Variation {result.varIndex + 1}</TableCell>
+                    <TableCell>
+                      {result.modelConfig.provider} - {result.modelConfig.model}
+                    </TableCell>
+                    <TableCell>${result.metrics.estimatedCost.toFixed(4)}</TableCell>
+                    <TableCell>{result.avgTokensPerSec.toFixed(1)}</TableCell>
+                    <TableCell>{result.metrics.tokenCount}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </Card>
 
           {/* Performance Trends */}
           <Card className="p-4">
