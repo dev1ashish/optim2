@@ -7,6 +7,13 @@ import Home from "@/pages/home";
 import { ApiSettings } from "@/components/settings/api-settings";
 import { useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
+import { Button } from "@/components/ui/button";
+import { Settings } from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 
 function Router() {
   return (
@@ -20,6 +27,7 @@ function Router() {
 function App() {
   const { toast } = useToast();
   const [apiKeysSet, setApiKeysSet] = useState(false);
+  const [isApiSettingsOpen, setIsApiSettingsOpen] = useState(false);
 
   // Check if API keys are set on initial load
   useEffect(() => {
@@ -33,13 +41,27 @@ function App() {
 
   return (
     <QueryClientProvider client={queryClient}>
-      {!apiKeysSet && (
-        <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50">
-          <div className="container max-w-2xl mx-auto py-16">
-            <ApiSettings onApiKeysSet={() => setApiKeysSet(true)} />
-          </div>
-        </div>
-      )}
+      {/* API Settings Button */}
+      <Dialog open={isApiSettingsOpen || !apiKeysSet} onOpenChange={setIsApiSettingsOpen}>
+        <DialogTrigger asChild>
+          <Button 
+            variant="outline" 
+            size="icon"
+            className="fixed top-4 right-4 z-50"
+          >
+            <Settings className="h-4 w-4" />
+          </Button>
+        </DialogTrigger>
+        <DialogContent className="sm:max-w-2xl">
+          <ApiSettings 
+            onApiKeysSet={() => {
+              setApiKeysSet(true);
+              setIsApiSettingsOpen(false);
+            }} 
+          />
+        </DialogContent>
+      </Dialog>
+
       <Router />
       <Toaster />
     </QueryClientProvider>
