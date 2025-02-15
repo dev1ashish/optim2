@@ -24,6 +24,8 @@ import {
 import type { ModelConfig } from "@/components/settings/model-settings-section";
 import type { StreamMetrics } from "@/lib/openai";
 import { ModelSelector } from "./model-selector";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 interface ModelComparisonResult {
   modelConfig: ModelConfig;
@@ -61,7 +63,7 @@ export function ModelArenaDialog({
   return (
     <Dialog>
       <DialogTrigger asChild>
-        <Button variant="outline">View Detailed Results</Button>
+        <Button variant="outline">View Results</Button>
       </DialogTrigger>
       <DialogContent className="max-w-[90vw] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
@@ -72,88 +74,97 @@ export function ModelArenaDialog({
         </DialogHeader>
 
         <div className="space-y-6">
-          <div className="bg-secondary p-3 rounded">
-            <Label className="text-sm">System Prompt:</Label>
-            <p className="mt-1 text-sm font-mono">{promptVariation}</p>
+          <div className="flex items-center gap-4">
+            <Select defaultValue="accuracy">
+              <SelectTrigger className="w-[180px]">
+                <SelectValue placeholder="Select Metric" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="accuracy">Accuracy</SelectItem>
+                <SelectItem value="tokensPerSec">Tokens/sec</SelectItem>
+                <SelectItem value="cost">Cost</SelectItem>
+                <SelectItem value="tokens">Total Tokens</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
 
-          <div className="bg-muted p-3 rounded">
-            <Label>Test Input:</Label>
-            <p className="mt-1 text-sm">{testCase}</p>
-          </div>
+          <Tabs defaultValue="comparison" className="w-full">
+            <TabsList className="grid w-full grid-cols-3">
+              <TabsTrigger value="comparison">Comparison View</TabsTrigger>
+              <TabsTrigger value="detailed">Detailed View</TabsTrigger>
+              <TabsTrigger value="matrix">Matrix View</TabsTrigger>
+            </TabsList>
 
-          <ModelSelector onModelConfigsChange={(configs) => onStartComparison(configs)} />
-
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-            {results.map((result, index) => (
-              <Card key={index} className="p-4 space-y-4">
-                <div className="flex justify-between items-center">
-                  <h3 className="font-medium">{result.modelConfig.provider} - {result.modelConfig.model}</h3>
-                  {result.isStreaming && (
-                    <Progress value={result.streamProgress} className="w-20" />
-                  )}
-                </div>
-
-                <div className="bg-secondary p-3 rounded min-h-[150px] text-sm whitespace-pre-wrap">
-                  {result.error ? (
-                    <Alert variant="destructive">
-                      <AlertDescription>
-                        {result.error}
-                      </AlertDescription>
-                    </Alert>
-                  ) : (
-                    result.response || "Waiting for response..."
-                  )}
-                </div>
-
-                <div className="grid grid-cols-2 gap-2 text-xs">
-                  <div>
-                    <Label className="text-xs">Response Time</Label>
-                    <p>{(result.metrics.endTime ? (result.metrics.endTime - result.metrics.startTime) : 0).toFixed(2)}ms</p>
-                  </div>
-                  <div>
-                    <Label className="text-xs">Tokens/sec</Label>
-                    <p>{(result.metrics.tokenCount / (Math.max(1, (result.metrics.endTime || Date.now()) - result.metrics.startTime) / 1000)).toFixed(1)}</p>
-                  </div>
-                  <div>
-                    <Label className="text-xs">Est. Cost</Label>
-                    <p>${result.metrics.estimatedCost.toFixed(4)}</p>
-                  </div>
-                  <div>
-                    <Label className="text-xs">Tokens</Label>
-                    <p>{result.metrics.tokenCount}</p>
-                  </div>
-                </div>
-              </Card>
-            ))}
-          </div>
-
-          {results.length > 0 && (
-            <>
-              <div className="space-y-4">
-                <h3 className="text-lg font-medium flex items-center gap-2">
-                  <LineChart className="w-5 h-5" />
-                  Metrics Visualization
-                </h3>
-                <div className="bg-card p-4 rounded-lg overflow-x-auto">
-                  <BarChart
-                    width={800}
-                    height={300}
-                    data={metricsData}
-                    margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
-                  >
-                    <CartesianGrid strokeDasharray="3 3" />
-                    <XAxis dataKey="name" angle={-45} textAnchor="end" height={100} />
-                    <YAxis yAxisId="left" orientation="left" stroke="#8884d8" />
-                    <YAxis yAxisId="right" orientation="right" stroke="#82ca9d" />
-                    <Tooltip />
-                    <Legend />
-                    <Bar yAxisId="left" dataKey="tokensPerSec" name="Tokens/sec" fill="#8884d8" />
-                    <Bar yAxisId="right" dataKey="cost" name="Cost ($)" fill="#82ca9d" />
-                  </BarChart>
-                </div>
+            {/* Comparison View */}
+            <TabsContent value="comparison" className="space-y-4">
+              <div className="bg-card p-4 rounded-lg overflow-x-auto">
+                <BarChart
+                  width={800}
+                  height={400}
+                  data={metricsData}
+                  margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
+                >
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="name" angle={-45} textAnchor="end" height={100} />
+                  <YAxis yAxisId="left" orientation="left" stroke="#8884d8" />
+                  <YAxis yAxisId="right" orientation="right" stroke="#82ca9d" />
+                  <Tooltip />
+                  <Legend />
+                  <Bar yAxisId="left" dataKey="tokensPerSec" name="Tokens/sec" fill="#8884d8" />
+                  <Bar yAxisId="right" dataKey="cost" name="Cost ($)" fill="#82ca9d" />
+                </BarChart>
               </div>
+            </TabsContent>
 
+            {/* Detailed View */}
+            <TabsContent value="detailed" className="space-y-4">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                {results.map((result, index) => (
+                  <Card key={index} className="p-4 space-y-4">
+                    <div className="flex justify-between items-center">
+                      <h3 className="font-medium">{result.modelConfig.provider} - {result.modelConfig.model}</h3>
+                      {result.isStreaming && (
+                        <Progress value={result.streamProgress} className="w-20" />
+                      )}
+                    </div>
+
+                    <div className="bg-secondary p-3 rounded min-h-[150px] text-sm whitespace-pre-wrap">
+                      {result.error ? (
+                        <Alert variant="destructive">
+                          <AlertDescription>
+                            {result.error}
+                          </AlertDescription>
+                        </Alert>
+                      ) : (
+                        result.response || "Waiting for response..."
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <div>
+                        <Label className="text-xs">Response Time</Label>
+                        <p>{(result.metrics.endTime ? (result.metrics.endTime - result.metrics.startTime) : 0).toFixed(2)}ms</p>
+                      </div>
+                      <div>
+                        <Label className="text-xs">Tokens/sec</Label>
+                        <p>{(result.metrics.tokenCount / (Math.max(1, (result.metrics.endTime || Date.now()) - result.metrics.startTime) / 1000)).toFixed(1)}</p>
+                      </div>
+                      <div>
+                        <Label className="text-xs">Est. Cost</Label>
+                        <p>${result.metrics.estimatedCost.toFixed(4)}</p>
+                      </div>
+                      <div>
+                        <Label className="text-xs">Tokens</Label>
+                        <p>{result.metrics.tokenCount}</p>
+                      </div>
+                    </div>
+                  </Card>
+                ))}
+              </div>
+            </TabsContent>
+
+            {/* Matrix View */}
+            <TabsContent value="matrix">
               <Table>
                 <TableHeader>
                   <TableRow>
@@ -176,8 +187,10 @@ export function ModelArenaDialog({
                   ))}
                 </TableBody>
               </Table>
-            </>
-          )}
+            </TabsContent>
+          </Tabs>
+
+          <ModelSelector onModelConfigsChange={onStartComparison} />
         </div>
       </DialogContent>
     </Dialog>
