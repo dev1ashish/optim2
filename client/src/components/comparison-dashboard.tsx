@@ -25,6 +25,8 @@ import { EvaluationCriteriaManager } from "./evaluation-criteria-manager";
 import type { EvaluationCriterion, EvaluationResult } from "@shared/schema";
 import { Button } from "@/components/ui/button";
 import { ModelArena } from "./model-arena/model-arena";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { StreamMetrics } from "@/lib/openai";
 
 interface ComparisonDashboardProps {
@@ -48,33 +50,202 @@ interface ComparisonDashboardProps {
   }[];
 }
 
-// Calculate aggregated metrics for a prompt variation
-const calculatePromptMetrics = (results: ComparisonDashboardProps["modelResults"]) => {
-  if (!results.length) return null;
+export function ComparisonDashboard({
+  variations,
+  testCases,
+  evaluationResults,
+  onEvaluate,
+  isEvaluating,
+  modelConfig,
+  onModelConfigChange,
+  defaultConfig,
+  useDefaultSettings,
+  onUseDefaultSettingsChange,
+  onCompareModels,
+  modelResults
+}: ComparisonDashboardProps) {
+  const [selectedMetric, setSelectedMetric] = useState("tokensPerSec");
+  const [selectedTestCase, setSelectedTestCase] = useState(testCases[0]?.input || "");
 
-  const avgTokensPerSec = results.reduce((acc, result) => {
-    const duration = (result.metrics.endTime || Date.now()) - result.metrics.startTime;
-    return acc + (result.metrics.tokenCount / (duration / 1000));
-  }, 0) / results.length;
+  // Calculate metrics for each prompt variation
+  const promptMetrics = variations.map((variation, index) => {
+    const variationResults = modelResults.filter((_, i) =>
+      Math.floor(i / testCases.length) === index
+    );
+    return {
+      variation,
+      index,
+      metrics: {
+        avgTokensPerSec: variationResults.reduce((acc, r) => 
+          acc + (r.metrics.tokenCount / ((r.metrics.endTime || Date.now()) - r.metrics.startTime) * 1000), 0) / Math.max(1, variationResults.length),
+        avgCost: variationResults.reduce((acc, r) => acc + r.metrics.estimatedCost, 0) / Math.max(1, variationResults.length),
+        totalTokens: variationResults.reduce((acc, r) => acc + r.metrics.tokenCount, 0),
+        avgResponseTime: variationResults.reduce((acc, r) => 
+          acc + ((r.metrics.endTime || Date.now()) - r.metrics.startTime), 0) / Math.max(1, variationResults.length)
+      }
+    };
+  });
 
-  const avgCost = results.reduce((acc, result) =>
-    acc + result.metrics.estimatedCost, 0) / results.length;
+  // Create chart data
+  const chartData = promptMetrics.map((metric, index) => ({
+    name: `Variation ${index + 1}`,
+    tokensPerSec: metric.metrics.avgTokensPerSec,
+    cost: metric.metrics.avgCost,
+    tokens: metric.metrics.totalTokens,
+    responseTime: metric.metrics.avgResponseTime
+  }));
 
-  const totalTokens = results.reduce((acc, result) =>
-    acc + result.metrics.tokenCount, 0);
+  return (
+    <Card className="p-6">
+      <div className="mb-6 flex justify-between items-center">
+        <h2 className="text-2xl font-bold">Model Comparison Arena</h2>
+        <div className="flex gap-4">
+          <Select value={selectedMetric} onValueChange={setSelectedMetric}>
+            <SelectTrigger className="w-[180px]">
+              <SelectValue placeholder="Select Metric" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="tokensPerSec">Tokens/sec</SelectItem>
+              <SelectItem value="cost">Cost</SelectItem>
+              <SelectItem value="tokens">Total Tokens</SelectItem>
+              <SelectItem value="responseTime">Response Time</SelectItem>
+            </SelectContent>
+          </Select>
 
-  const avgResponseTime = results.reduce((acc, result) => {
-    const duration = (result.metrics.endTime || Date.now()) - result.metrics.startTime;
-    return acc + duration;
-  }, 0) / results.length;
+          <Select value={selectedTestCase} onValueChange={setSelectedTestCase}>
+            <SelectTrigger className="w-[200px]">
+              <SelectValue placeholder="Select Test Case" />
+            </SelectTrigger>
+            <SelectContent>
+              {testCases.map((testCase, index) => (
+                <SelectItem key={index} value={testCase.input}>
+                  Test Case {index + 1}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
 
-  return {
-    avgTokensPerSec,
-    avgCost,
-    totalTokens,
-    avgResponseTime
-  };
-};
+      <Tabs defaultValue="comparison">
+        <TabsList className="grid w-full grid-cols-3 mb-6">
+          <TabsTrigger value="comparison">Comparison View</TabsTrigger>
+          <TabsTrigger value="detailed">Detailed View</TabsTrigger>
+          <TabsTrigger value="matrix">Matrix View</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="comparison" className="space-y-6">
+          <Card className="p-4">
+            <h3 className="text-lg font-semibold mb-4">Metric Comparison</h3>
+            <div className="w-full overflow-x-auto">
+              <BarChart
+                width={800}
+                height={400}
+                data={chartData}
+                margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="name" />
+                <YAxis />
+                <Tooltip />
+                <Legend />
+                <Bar dataKey={selectedMetric} fill="#22c55e" />
+              </BarChart>
+            </div>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="detailed" className="space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {variations.map((variation, index) => {
+              const results = modelResults.filter((_, i) =>
+                Math.floor(i / testCases.length) === index
+              );
+              return (
+                <Card key={index} className="p-4">
+                  <h3 className="font-semibold mb-2">Variation {index + 1}</h3>
+                  <p className="text-sm text-muted-foreground mb-4 line-clamp-2">{variation}</p>
+
+                  <div className="space-y-2">
+                    {results.map((result, rIndex) => (
+                      <div key={rIndex} className="p-2 bg-secondary rounded">
+                        <p className="text-sm font-medium mb-1">
+                          {result.modelConfig.provider} - {result.modelConfig.model}
+                        </p>
+                        <div className="grid grid-cols-2 gap-2 text-xs">
+                          <div>Tokens/sec: {(result.metrics.tokenCount / ((result.metrics.endTime || Date.now()) - result.metrics.startTime) * 1000).toFixed(1)}</div>
+                          <div>Cost: ${result.metrics.estimatedCost.toFixed(4)}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </Card>
+              );
+            })}
+          </div>
+        </TabsContent>
+
+        <TabsContent value="matrix">
+          <Card className="p-4">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Variation</TableHead>
+                  {modelResults
+                    .filter((_, i) => i < testCases.length)
+                    .map((result, index) => (
+                      <TableHead key={index}>
+                        {result.modelConfig.provider} - {result.modelConfig.model}
+                      </TableHead>
+                    ))}
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {variations.map((variation, vIndex) => (
+                  <TableRow key={vIndex}>
+                    <TableCell>Variation {vIndex + 1}</TableCell>
+                    {modelResults
+                      .filter((_, i) => i < testCases.length)
+                      .map((_, mIndex) => {
+                        const result = modelResults[vIndex * testCases.length + mIndex];
+                        return (
+                          <TableCell key={mIndex}>
+                            {selectedMetric === 'tokensPerSec' && 
+                              `${(result.metrics.tokenCount / ((result.metrics.endTime || Date.now()) - result.metrics.startTime) * 1000).toFixed(1)}/s`}
+                            {selectedMetric === 'cost' && 
+                              `$${result.metrics.estimatedCost.toFixed(4)}`}
+                            {selectedMetric === 'tokens' && 
+                              result.metrics.tokenCount}
+                            {selectedMetric === 'responseTime' && 
+                              `${((result.metrics.endTime || Date.now()) - result.metrics.startTime).toFixed(0)}ms`}
+                          </TableCell>
+                        );
+                      })}
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </Card>
+        </TabsContent>
+      </Tabs>
+
+      {variations.map((variation, index) => (
+        <ModelArena
+          key={index}
+          testCase={selectedTestCase}
+          promptVariation={variation}
+          promptVariationIndex={index}
+          modelConfigs={[modelConfig]}
+          onStartComparison={onCompareModels}
+          results={modelResults.slice(
+            index * testCases.length,
+            (index + 1) * testCases.length
+          )}
+        />
+      ))}
+    </Card>
+  );
+}
 
 const defaultCriteria: EvaluationCriterion[] = [
   {
@@ -113,422 +284,3 @@ const defaultCriteria: EvaluationCriterion[] = [
     weight: 1
   }
 ];
-
-export function ComparisonDashboard({
-  variations,
-  testCases,
-  evaluationResults,
-  onEvaluate,
-  isEvaluating,
-  modelConfig,
-  onModelConfigChange,
-  defaultConfig,
-  useDefaultSettings,
-  onUseDefaultSettingsChange,
-  onCompareModels,
-  modelResults
-}: ComparisonDashboardProps) {
-  const [criteria, setCriteria] = useState<EvaluationCriterion[]>(defaultCriteria);
-
-  // Calculate metrics for each prompt variation
-  const promptMetrics = variations.map((variation, index) => {
-    const variationResults = modelResults.filter((_, i) =>
-      Math.floor(i / testCases.length) === index
-    );
-    return {
-      index,
-      variation,
-      metrics: calculatePromptMetrics(variationResults) || {
-        avgTokensPerSec: 0,
-        avgCost: 0,
-        totalTokens: 0,
-        avgResponseTime: 0
-      }
-    };
-  });
-
-  // Sort prompt variations by different metrics
-  const byTokensPerSec = [...promptMetrics].sort((a, b) =>
-    b.metrics.avgTokensPerSec - a.metrics.avgTokensPerSec
-  );
-  const byCost = [...promptMetrics].sort((a, b) =>
-    a.metrics.avgCost - b.metrics.avgCost
-  );
-  const byTokens = [...promptMetrics].sort((a, b) =>
-    a.metrics.totalTokens - b.metrics.totalTokens
-  );
-
-  // Create chart data for prompt variation performance
-  const chartData = promptMetrics.map((metric, index) => ({
-    name: `Variation ${index + 1}`,
-    tokensPerSec: metric.metrics.avgTokensPerSec,
-    cost: metric.metrics.avgCost,
-    tokens: metric.metrics.totalTokens,
-    responseTime: metric.metrics.avgResponseTime
-  }));
-
-  // Calculate weighted average score for a variation
-  const getWeightedScore = (variationIndex: number) => {
-    const results = evaluationResults.filter(r => r.variationIndex === variationIndex);
-    if (!results.length) return 0;
-
-    let totalWeight = 0;
-    let weightedSum = 0;
-
-    criteria.forEach(criterion => {
-      const scores = results.map(r => r.scores[criterion.id] || 0);
-      const avgScore = scores.reduce((a, b) => a + b, 0) / scores.length;
-      weightedSum += avgScore * criterion.weight;
-      totalWeight += criterion.weight;
-    });
-
-    return totalWeight ? weightedSum / totalWeight : 0;
-  };
-
-  // Calculate scores and create sorted index
-  const scores = variations.map((variation, index) => ({
-    index,
-    score: getWeightedScore(index),
-    variation
-  }));
-
-  // Sort by score in descending order
-  const sortedScores = [...scores].sort((a, b) => b.score - a.score);
-  const topThree = sortedScores.slice(0, 3);
-
-  const chartData2 = variations.map((_, index) => ({
-    name: `Variation ${index + 1}`,
-    score: getWeightedScore(index)
-  }));
-
-  const getMedalColor = (position: number) => {
-    switch (position) {
-      case 0: return "text-yellow-500"; // Gold
-      case 1: return "text-gray-400";   // Silver
-      case 2: return "text-amber-700";  // Bronze
-      default: return "text-gray-500";
-    }
-  };
-
-  const metaPrompt = "This is a meta prompt"; // Placeholder, replace with actual meta prompt
-  const metaPromptConfig = modelConfig; // Placeholder, adjust as needed
-
-
-  const bestCombinations = variations.flatMap((variation, varIndex) => {
-    return modelResults
-      .filter((_, i) => Math.floor(i / testCases.length) === varIndex)
-      .map(result => ({
-        variation,
-        varIndex,
-        ...result,
-        avgTokensPerSec: (result.metrics.tokenCount / ((result.metrics.endTime || Date.now()) - result.metrics.startTime)) * 1000
-      }));
-  }).sort((a, b) => {
-    // First by cost efficiency (lowest cost)
-    const costDiff = a.metrics.estimatedCost - b.metrics.estimatedCost;
-    if (Math.abs(costDiff) > 0.0001) return costDiff;
-
-    // Then by speed (highest tokens/sec)
-    return b.avgTokensPerSec - a.avgTokensPerSec;
-  });
-
-  return (
-    <Card className="p-6 space-y-8">
-      <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold">Evaluation Dashboard</h2>
-        <ModelSettingsSection
-          title="Evaluation Settings"
-          description="Configure the default model for evaluating responses"
-          config={modelConfig}
-          onChange={onModelConfigChange}
-          defaultConfig={defaultConfig}
-          useDefaultSettings={useDefaultSettings}
-          onUseDefaultSettingsChange={onUseDefaultSettingsChange}
-        />
-      </div>
-
-      <EvaluationCriteriaManager
-        criteria={criteria}
-        onAddCriterion={(criterion) => {
-          setCriteria([...criteria, criterion]);
-        }}
-        onUpdateCriterion={(id, criterion) => {
-          setCriteria(criteria.map(c => c.id === id ? criterion : c));
-        }}
-        onRemoveCriterion={(id) => {
-          setCriteria(criteria.filter(c => c.id !== id));
-        }}
-        defaultModelConfig={modelConfig}
-      />
-
-      <div className="flex justify-end">
-        <Button
-          onClick={() => onEvaluate(criteria)}
-          disabled={isEvaluating}
-        >
-          {isEvaluating ? "Evaluating..." : "Run Evaluation"}
-        </Button>
-      </div>
-
-      {evaluationResults.length > 0 && (
-        <>
-          {/* Side-by-side comparison of responses */}
-          <div className="space-y-6">
-            <h3 className="text-xl font-semibold">Response Comparison</h3>
-            <div className="space-y-8">
-              {testCases.map((testCase, testIndex) => (
-                <Card key={testIndex} className="p-4">
-                  <div className="mb-4">
-                    <h4 className="font-semibold mb-2">Test Query:</h4>
-                    <p className="text-sm bg-muted p-2 rounded">{testCase.input}</p>
-                  </div>
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    {variations.map((_, varIndex) => {
-                      const result = evaluationResults.find(
-                        r => r.variationIndex === varIndex && r.testCaseIndex === testIndex
-                      );
-                      return (
-                        <div key={varIndex} className="space-y-3">
-                          <h5 className="font-medium">Meta-Prompt {varIndex + 1}</h5>
-                          <div className="bg-secondary p-3 rounded min-h-[100px] text-sm">
-                            {result?.response || "No response generated"}
-                          </div>
-                          {result && (
-                            <div className="text-xs space-y-1">
-                              {Object.entries(result.scores).map(([criterionId, score]) => {
-                                const criterion = criteria.find(c => c.id === criterionId);
-                                return criterion ? (
-                                  <div key={criterionId} className="flex justify-between">
-                                    <span>{criterion.name}:</span>
-                                    <span>{(score * 100).toFixed(0)}%</span>
-                                  </div>
-                                ) : null;
-                              })}
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })}
-                  </div>
-                </Card>
-              ))}
-            </div>
-          </div>
-
-          {/* Charts and statistics */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-            <div>
-              <h3 className="text-xl font-semibold mb-4">Overall Performance</h3>
-              <BarChart
-                width={500}
-                height={300}
-                data={chartData2}
-                margin={{
-                  top: 5,
-                  right: 30,
-                  left: 20,
-                  bottom: 5,
-                }}
-              >
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="name" />
-                <YAxis domain={[0, 1]} />
-                <Tooltip />
-                <Legend />
-                <Bar dataKey="score" fill="#22c55e" />
-              </BarChart>
-            </div>
-
-            <div>
-              <h3 className="text-xl font-semibold mb-4">Top Performers</h3>
-              <div className="grid grid-cols-1 gap-4">
-                {topThree.map((result, index) => (
-                  <Card key={index} className="p-4 relative">
-                    <div className="absolute top-2 right-2">
-                      <Medal className={`w-6 h-6 ${getMedalColor(index)}`} />
-                    </div>
-                    <div className="space-y-2">
-                      <h4 className="font-semibold">Rank #{index + 1}</h4>
-                      <p className="text-sm text-muted-foreground">
-                        Score: {(result.score * 100).toFixed(1)}%
-                      </p>
-                      <pre className="text-xs whitespace-pre-wrap bg-secondary p-2 rounded">
-                        {result.variation}
-                      </pre>
-                    </div>
-                  </Card>
-                ))}
-              </div>
-            </div>
-          </div>
-        </>
-      )}
-      {/* Prompt Variation Leaderboard */}
-      {modelResults.length > 0 && (
-        <div className="space-y-6">
-          <div className="flex items-center gap-2">
-            <Trophy className="w-6 h-6 text-yellow-500" />
-            <h2 className="text-2xl font-bold">Prompt Variation Leaderboard</h2>
-          </div>
-
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* Fastest Processing */}
-            <Card className="p-4">
-              <h3 className="font-semibold mb-4">Fastest Processing (Tokens/sec)</h3>
-              <div className="space-y-2">
-                {byTokensPerSec.slice(0, 3).map((prompt, index) => (
-                  <div key={index} className="flex items-center gap-2">
-                    <Medal className={`w-5 h-5 ${
-                      index === 0 ? "text-yellow-500" :
-                        index === 1 ? "text-gray-400" :
-                          "text-amber-700"
-                    }`} />
-                    <span>Variation {prompt.index + 1}:</span>
-                    <span className="font-mono">
-                      {prompt.metrics.avgTokensPerSec.toFixed(1)}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </Card>
-
-            {/* Most Cost-Effective */}
-            <Card className="p-4">
-              <h3 className="font-semibold mb-4">Most Cost-Effective</h3>
-              <div className="space-y-2">
-                {byCost.slice(0, 3).map((prompt, index) => (
-                  <div key={index} className="flex items-center gap-2">
-                    <Medal className={`w-5 h-5 ${
-                      index === 0 ? "text-yellow-500" :
-                        index === 1 ? "text-gray-400" :
-                          "text-amber-700"
-                    }`} />
-                    <span>Variation {prompt.index + 1}:</span>
-                    <span className="font-mono">
-                      ${prompt.metrics.avgCost.toFixed(4)}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </Card>
-
-            {/* Token Efficiency */}
-            <Card className="p-4">
-              <h3 className="font-semibold mb-4">Token Efficiency</h3>
-              <div className="space-y-2">
-                {byTokens.slice(0, 3).map((prompt, index) => (
-                  <div key={index} className="flex items-center gap-2">
-                    <Medal className={`w-5 h-5 ${
-                      index === 0 ? "text-yellow-500" :
-                        index === 1 ? "text-gray-400" :
-                          "text-amber-700"
-                    }`} />
-                    <span>Variation {prompt.index + 1}:</span>
-                    <span className="font-mono">
-                      {prompt.metrics.totalTokens.toLocaleString()} tokens
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </Card>
-          </div>
-
-          <Card className="p-4">
-            <h3 className="font-semibold mb-4">Best Prompt-Model Combinations</h3>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Rank</TableHead>
-                  <TableHead>Prompt Variation</TableHead>
-                  <TableHead>Model</TableHead>
-                  <TableHead>Cost</TableHead>
-                  <TableHead>Tokens/sec</TableHead>
-                  <TableHead>Total Tokens</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {bestCombinations.slice(0, 5).map((result, index) => (
-                  <TableRow key={index}>
-                    <TableCell>#{index + 1}</TableCell>
-                    <TableCell>Variation {result.varIndex + 1}</TableCell>
-                    <TableCell>
-                      {result.modelConfig.provider} - {result.modelConfig.model}
-                    </TableCell>
-                    <TableCell>${result.metrics.estimatedCost.toFixed(4)}</TableCell>
-                    <TableCell>{result.avgTokensPerSec.toFixed(1)}</TableCell>
-                    <TableCell>{result.metrics.tokenCount}</TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </Card>
-
-          {/* Performance Trends */}
-          <Card className="p-4">
-            <h3 className="font-semibold mb-4">Performance Trends</h3>
-            <div className="w-full overflow-x-auto">
-              <LineChart
-                width={800}
-                height={400}
-                data={chartData}
-                margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
-              >
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="name" />
-                <YAxis yAxisId="left" orientation="left" stroke="#8884d8" />
-                <YAxis yAxisId="right" orientation="right" stroke="#82ca9d" />
-                <Tooltip />
-                <Legend />
-                <Line
-                  yAxisId="left"
-                  type="monotone"
-                  dataKey="tokensPerSec"
-                  name="Tokens/sec"
-                  stroke="#8884d8"
-                />
-                <Line
-                  yAxisId="right"
-                  type="monotone"
-                  dataKey="cost"
-                  name="Cost ($)"
-                  stroke="#82ca9d"
-                />
-              </LineChart>
-            </div>
-          </Card>
-        </div>
-      )}
-
-      {testCases.map((testCase) => (
-        variations.map((variation, variationIndex) => (
-          <ModelArena
-            key={`${testCase.input}-${variationIndex}`}
-            testCase={testCase.input}
-            promptVariation={variation}
-            promptVariationIndex={variationIndex}
-            modelConfigs={[
-              metaPromptConfig,
-              {
-                ...metaPromptConfig,
-                provider: "anthropic",
-                model: "claude-3"
-              },
-              {
-                ...metaPromptConfig,
-                provider: "groq",
-                model: "llama2"
-              }
-            ]}
-            onStartComparison={(configs) =>
-              onCompareModels(variation, testCase.input, configs)
-            }
-            results={modelResults.slice(
-              variationIndex * testCases.length,
-              (variationIndex + 1) * testCases.length
-            )}
-          />
-        ))
-      ))}
-    </Card>
-  );
-}
