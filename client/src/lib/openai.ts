@@ -1,6 +1,6 @@
 import OpenAI from "openai";
 import Anthropic from '@anthropic-ai/sdk';
-import type { MetaPromptInput } from "@shared/schema";
+import { type MetaPromptInput } from "@shared/schema";
 import type { ModelConfig } from "@/components/settings/model-settings-section";
 import type { Provider } from "@/types";
 
@@ -13,7 +13,6 @@ interface ProviderConfig {
     models: ModelConfigItem[];
 }
 
-// Updated configurations with correct token limits
 const MODEL_CONFIGS = {
     openai: {
         models: [
@@ -63,7 +62,7 @@ function getClient(config: ModelConfig) {
         case "groq":
             return new OpenAI({
                 apiKey: config.apiKey,
-                baseURL: "https://api.groq.com/openai/v1",
+                baseURL: "https://api.groq.com/v1",
                 dangerouslyAllowBrowser: true
             });
         case "gemini":
@@ -111,9 +110,6 @@ function handleApiError(error: any) {
 
     if (error.error?.message) {
         throw new Error(`API Error: ${error.error.message}`);
-    }
-    if (error.status === 401) {
-        throw new Error("Invalid API key. Please check your credentials.");
     }
 
     throw error;
@@ -193,25 +189,8 @@ export async function* streamResponse(
 
         metrics.endTime = Date.now();
         onMetrics?.(metrics);
-    } catch (error: any) {
-        console.error(`Stream error for ${config.provider}:`, error);
-        let errorMessage = "An error occurred while streaming the response. ";
-
-        if (error.status === 401) {
-            errorMessage += "Invalid API key. Please check your credentials.";
-        } else if (error.message) {
-            errorMessage += error.message;
-        }
-
-        yield {
-            chunk: `Error: ${errorMessage}`,
-            metrics: {
-                startTime: Date.now(),
-                endTime: Date.now(),
-                tokenCount: 0,
-                estimatedCost: 0
-            }
-        };
+    } catch (error) {
+        handleApiError(error);
     }
 }
 
@@ -234,7 +213,7 @@ export async function compareModels(
                 for await (const { chunk, metrics } of stream) {
                     onProgress(index, chunk, metrics);
                 }
-            } catch (error: any) {
+            } catch (error) {
                 console.error(`Error in model comparison for index ${index}:`, error);
                 onProgress(index, `Error: ${error.message}`, {
                     startTime: Date.now(),

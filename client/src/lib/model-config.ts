@@ -20,11 +20,11 @@ export const MODEL_CONFIGS = {
   anthropic: {
     name: "Anthropic",
     models: [
-      { id: "claude-3-5-sonnet-20241022", name: "Claude 3.5 Sonnet", maxTokens: 3900 },
-      { id: "claude-3-5-haiku-20241022", name: "Claude 3.5 Haiku", maxTokens: 3900 },
-      { id: "claude-3-opus-20240229", name: "Claude 3 Opus", maxTokens: 3900 },
-      { id: "claude-3-sonnet-20240229", name: "Claude 3 Sonnet", maxTokens: 3900 },
-      { id: "claude-3-haiku-20240307", name: "Claude 3 Haiku", maxTokens: 3900 }
+      { id: "claude-3-5-sonnet-20241022", name: "Claude 3.5 Sonnet", maxTokens: 8192 },
+      { id: "claude-3-5-haiku-20241022", name: "Claude 3.5 Haiku", maxTokens: 8192 },
+      { id: "claude-3-opus-20240229", name: "Claude 3 Opus", maxTokens: 8192 },
+      { id: "claude-3-sonnet-20240229", name: "Claude 3 Sonnet", maxTokens: 8192 },
+      { id: "claude-3-haiku-20240307", name: "Claude 3 Haiku", maxTokens: 8192 }
     ]
   },
   gemini: {
@@ -40,11 +40,11 @@ export const MODEL_CONFIGS = {
   groq: {
     name: "Groq",
     models: [
-      { id: "llama-3-70b-8192", name: "LLaMA-3 70B", maxTokens: 4096 },
-      { id: "llama-3-8b-8192", name: "LLaMA-3 8B", maxTokens: 4096 },
+      { id: "llama-3-70b-8192", name: "LLaMA-3 70B", maxTokens: 8192 },
+      { id: "llama-3-8b-8192", name: "LLaMA-3 8B", maxTokens: 8192 },
       { id: "llama2-70b-4096", name: "LLaMA2 70B", maxTokens: 4096 },
-      { id: "llama2-7b-8192", name: "LLaMA2 7B", maxTokens: 4096 },
-      { id: "mixtral-8x7b-32768", name: "Mixtral 8x7B", maxTokens: 4096 }
+      { id: "llama2-7b-8192", name: "LLaMA2 7B", maxTokens: 8192 },
+      { id: "mixtral-8x7b-32768", name: "Mixtral 8x7B", maxTokens: 32768 }
     ]
   }
 } as const;
