@@ -244,7 +244,7 @@ export default function Home() {
                   ...metrics,
                   scores: metrics.scores || result.metrics.scores
                 },
-                streamProgress: metrics.endTime ? 100 : ((metrics.tokenCount / (metrics.totalTokens || 100)) * 100),
+                streamProgress: metrics.endTime ? 100 : ((metrics.tokenCount / 100) * 100),
                 isStreaming: !metrics.endTime
               };
             }

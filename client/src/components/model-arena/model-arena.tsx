@@ -7,7 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ModelConfig } from "@/components/settings/model-settings-section";
-import { Gauge, Settings2 } from "lucide-react";
+import { Gauge, Settings2, Award } from "lucide-react";
 import type { StreamMetrics } from "@/lib/openai";
 import { ModelSelector } from "./model-selector";
 import { EvaluationCriteriaManager } from "../evaluation-criteria-manager";
@@ -26,8 +26,8 @@ interface ModelArenaProps {
   testCases: TestCase[];
   selectedTestCase: TestCase;
   onTestCaseSelect: (testCase: TestCase) => void;
-  modelConfigs: ModelConfig[];
-  onStartComparison: (configs: ModelConfig[]) => Promise<void>;
+  variations: string[];
+  onStartComparison: (prompt: string, configs: ModelConfig[]) => Promise<void>;
   results: ModelComparisonResult[];
   evaluationCriteria: EvaluationCriterion[];
   onUpdateCriteria: (criteria: EvaluationCriterion[]) => void;
@@ -37,21 +37,23 @@ export function ModelArena({
   testCases,
   selectedTestCase,
   onTestCaseSelect,
-  modelConfigs,
+  variations,
   onStartComparison,
   results,
   evaluationCriteria,
   onUpdateCriteria
 }: ModelArenaProps) {
   const [isComparing, setIsComparing] = useState(false);
-  const [selectedConfigs, setSelectedConfigs] = useState<ModelConfig[]>(modelConfigs);
+  const [selectedConfigs, setSelectedConfigs] = useState<ModelConfig[]>([]);
   const [viewMode, setViewMode] = useState<"grid" | "matrix">("grid");
   const [showSettings, setShowSettings] = useState(false);
+  const [selectedVariation, setSelectedVariation] = useState<string>(variations[0]);
 
   const handleStartComparison = async () => {
+    if (!selectedVariation || selectedConfigs.length === 0) return;
     setIsComparing(true);
     try {
-      await onStartComparison(selectedConfigs);
+      await onStartComparison(selectedVariation, selectedConfigs);
     } finally {
       setIsComparing(false);
     }
@@ -71,6 +73,15 @@ export function ModelArena({
 
     return totalWeight ? weightedSum / totalWeight : 0;
   };
+
+  // Sort results by overall score
+  const sortedResults = [...results].sort((a, b) => {
+    const scoreA = calculateWeightedScore(a.scores);
+    const scoreB = calculateWeightedScore(b.scores);
+    return scoreB - scoreA;
+  });
+
+  const bestResult = sortedResults[0];
 
   return (
     <div className="space-y-6">
@@ -98,27 +109,48 @@ export function ModelArena({
         </div>
       </div>
 
-      {/* Test Case Selection */}
-      <div>
-        <Label>Select Test Prompt:</Label>
-        <Select 
-          value={selectedTestCase?.input} 
-          onValueChange={(value) => {
-            const testCase = testCases.find(tc => tc.input === value);
-            if (testCase) onTestCaseSelect(testCase);
-          }}
-        >
-          <SelectTrigger>
-            <SelectValue placeholder="Choose a test case..." />
-          </SelectTrigger>
-          <SelectContent>
-            {testCases.map((testCase, index) => (
-              <SelectItem key={index} value={testCase.input}>
-                Test {index + 1}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+      {/* Main Controls */}
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <Label>Select Test Case:</Label>
+          <Select 
+            value={selectedTestCase?.input} 
+            onValueChange={(value) => {
+              const testCase = testCases.find(tc => tc.input === value);
+              if (testCase) onTestCaseSelect(testCase);
+            }}
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="Choose a test case..." />
+            </SelectTrigger>
+            <SelectContent>
+              {testCases.map((testCase, index) => (
+                <SelectItem key={index} value={testCase.input}>
+                  Test {index + 1}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+
+        <div>
+          <Label>Select Prompt Variation:</Label>
+          <Select
+            value={selectedVariation}
+            onValueChange={setSelectedVariation}
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="Choose a variation..." />
+            </SelectTrigger>
+            <SelectContent>
+              {variations.map((variation, index) => (
+                <SelectItem key={index} value={variation}>
+                  Variation {index + 1}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
       </div>
 
       {/* Settings Panel */}
@@ -154,10 +186,28 @@ export function ModelArena({
         {isComparing ? "Comparing Models..." : "Start Comparison"}
       </Button>
 
+      {/* Best Result Banner */}
+      {bestResult && bestResult.scores && (
+        <Card className="p-4 bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800">
+          <div className="flex items-center gap-2">
+            <Award className="w-5 h-5 text-green-600 dark:text-green-400" />
+            <div>
+              <h3 className="font-medium">Best Performing Combination</h3>
+              <p className="text-sm text-muted-foreground">
+                {bestResult.modelConfig.provider} - {bestResult.modelConfig.model}
+                <span className="ml-2 font-medium">
+                  Score: {(calculateWeightedScore(bestResult.scores) * 100).toFixed(1)}%
+                </span>
+              </p>
+            </div>
+          </div>
+        </Card>
+      )}
+
       {/* Results Grid View */}
       {viewMode === "grid" && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-          {results.map((result, index) => (
+          {sortedResults.map((result, index) => (
             <Card key={index} className="p-4 space-y-4">
               <div className="flex justify-between items-center">
                 <h3 className="font-medium">{result.modelConfig.provider} - {result.modelConfig.model}</h3>
@@ -227,7 +277,7 @@ export function ModelArena({
             </TableRow>
           </TableHeader>
           <TableBody>
-            {results.map((result, index) => (
+            {sortedResults.map((result, index) => (
               <TableRow key={index}>
                 <TableCell>{result.modelConfig.provider} - {result.modelConfig.model}</TableCell>
                 <TableCell>{(result.metrics.endTime ? (result.metrics.endTime - result.metrics.startTime) : 0).toFixed(2)}ms</TableCell>

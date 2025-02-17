@@ -1,9 +1,9 @@
 import { useState } from "react";
 import { Card } from "@/components/ui/card";
-import { ModelSettingsSection, type ModelConfig } from "@/components/settings/model-settings-section";
 import type { EvaluationCriterion, TestCase } from "@shared/schema";
 import { ModelArena } from "./model-arena/model-arena";
 import type { StreamMetrics } from "@/lib/openai";
+import type { ModelConfig } from "@/components/settings/model-settings-section";
 
 interface ComparisonDashboardProps {
   variations: string[];
@@ -74,9 +74,9 @@ export function ComparisonDashboard({
         testCases={testCases}
         selectedTestCase={selectedTestCase}
         onTestCaseSelect={setSelectedTestCase}
-        modelConfigs={[defaultConfig]}
-        onStartComparison={(configs) =>
-          onCompareModels(variations[0], selectedTestCase.input, configs)
+        variations={variations}
+        onStartComparison={(prompt, configs) =>
+          onCompareModels(prompt, selectedTestCase.input, configs)
         }
         results={modelResults}
         evaluationCriteria={criteria}
