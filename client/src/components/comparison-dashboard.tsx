@@ -1,18 +1,19 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Card } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { ModelSettingsSection, type ModelConfig } from "@/components/settings/model-settings-section";
-import { EvaluationCriteriaManager } from "./evaluation-criteria-manager";
-import { PromptComparisonDashboard } from "./prompt-comparison-dashboard";
-import type { EvaluationCriterion, EvaluationResult, TestCase } from "@shared/schema";
+import { ModelArena } from "./model-arena/model-arena";
+import type { EvaluationCriterion, TestCase } from "@shared/schema";
+import type { ModelConfig } from "@/components/settings/model-settings-section";
 import type { StreamMetrics } from "@/lib/openai";
 
 interface ComparisonDashboardProps {
   variations: string[];
   testCases: TestCase[];
-  evaluationResults: EvaluationResult[];
-  onEvaluate: (criteria: EvaluationCriterion[]) => Promise<void>;
-  isEvaluating: boolean;
+  evaluationResults: {
+    variationIndex: number;
+    testCaseIndex: number;
+    response: string;
+    scores: Record<string, number>;
+  }[];
   modelConfig: ModelConfig;
   onModelConfigChange: (config: ModelConfig) => void;
   defaultConfig: ModelConfig;
@@ -70,80 +71,37 @@ export function ComparisonDashboard({
   variations,
   testCases,
   evaluationResults,
-  onEvaluate,
-  isEvaluating,
   modelConfig,
-  onModelConfigChange,
-  defaultConfig,
-  useDefaultSettings,
-  onUseDefaultSettingsChange,
-  onCompareModels,
-  modelResults
+  modelResults,
+  onCompareModels
 }: ComparisonDashboardProps) {
-  const [criteria, setCriteria] = useState<EvaluationCriterion[]>(defaultCriteria);
-
-  // Combine evaluation results with model results
+  // Map evaluation results to model results
   const combinedResults = evaluationResults.map(evalResult => {
     const modelResult = modelResults[evalResult.variationIndex * testCases.length + evalResult.testCaseIndex];
     return {
-      ...evalResult,
-      modelConfig: modelResult.modelConfig,
-      metrics: modelResult.metrics
+      ...modelResult,
+      scores: evalResult.scores
     };
   });
 
   return (
-    <Card className="p-6 space-y-8">
-      <div className="flex justify-between items-start">
-        <div className="space-y-2">
-          <h2 className="text-2xl font-bold">Model Evaluation & Comparison</h2>
-          <p className="text-muted-foreground">
-            Compare different prompt variations across multiple models and metrics
-          </p>
-        </div>
-
-        <ModelSettingsSection
-          title="Evaluation Settings"
-          description="Configure the model settings for evaluation"
-          config={modelConfig}
-          onChange={onModelConfigChange}
-          defaultConfig={defaultConfig}
-          useDefaultSettings={useDefaultSettings}
-          onUseDefaultSettingsChange={onUseDefaultSettingsChange}
-        />
-      </div>
-
-      <EvaluationCriteriaManager
-        criteria={criteria}
-        onAddCriterion={(criterion) => {
-          setCriteria([...criteria, criterion]);
-        }}
-        onUpdateCriterion={(id, criterion) => {
-          setCriteria(criteria.map(c => c.id === id ? criterion : c));
-        }}
-        onRemoveCriterion={(id) => {
-          setCriteria(criteria.filter(c => c.id !== id));
-        }}
-      />
-
-      <div className="flex justify-end">
-        <Button
-          onClick={() => onEvaluate(criteria)}
-          disabled={isEvaluating}
-        >
-          {isEvaluating ? "Evaluating..." : "Run Evaluation"}
-        </Button>
-      </div>
-
-      {combinedResults.length > 0 && (
-        <PromptComparisonDashboard
-          variations={variations}
-          testCases={testCases}
+    <div className="space-y-6">
+      {variations.map((variation, index) => (
+        <ModelArena
+          key={index}
+          testCase={testCases[0].input}
+          promptVariation={variation}
+          promptVariationIndex={index}
           modelConfigs={[modelConfig]}
-          evaluationCriteria={criteria}
-          results={combinedResults}
+          evaluationCriteria={defaultCriteria}
+          onStartComparison={(configs) =>
+            onCompareModels(variation, testCases[0].input, configs)
+          }
+          results={combinedResults.filter(
+            r => r.variationIndex === index && r.testCaseIndex === 0
+          )}
         />
-      )}
-    </Card>
+      ))}
+    </div>
   );
 }

@@ -44,7 +44,6 @@ interface ModelComparisonResult {
   scores?: Record<string, number>;
   isStreaming: boolean;
   streamProgress: number;
-  error?: string;
 }
 
 interface ModelArenaProps {
@@ -53,8 +52,8 @@ interface ModelArenaProps {
   promptVariationIndex: number;
   modelConfigs: ModelConfig[];
   evaluationCriteria: EvaluationCriterion[];
-  onStartComparison: (configs: ModelConfig[]) => Promise<void>;
   results: ModelComparisonResult[];
+  onStartComparison: (configs: ModelConfig[]) => Promise<void>;
 }
 
 export function ModelArena({
@@ -63,32 +62,38 @@ export function ModelArena({
   promptVariationIndex,
   modelConfigs,
   evaluationCriteria,
-  onStartComparison,
-  results
+  results,
+  onStartComparison
 }: ModelArenaProps) {
-  const [selectedMetric, setSelectedMetric] = useState<string>("accuracy");
-  const [selectedView, setSelectedView] = useState<string>("comparison");
+  const [selectedMetric, setSelectedMetric] = useState("accuracy");
+  const [selectedView, setSelectedView] = useState("comparison");
 
-  // Get all available metrics including evaluation criteria
-  const allMetrics = [
+  // Get all available metrics
+  const metrics = [
+    ...evaluationCriteria.map(c => ({ id: c.id, name: c.name })),
     { id: "tokensPerSec", name: "Tokens/sec" },
     { id: "cost", name: "Cost" },
-    { id: "tokens", name: "Total Tokens" },
-    ...evaluationCriteria.map(c => ({ id: c.id, name: c.name }))
+    { id: "tokens", name: "Total Tokens" }
   ];
 
   // Process results for visualization
   const processedData = results.map(result => {
-    const baseData = {
-      name: `${result.modelConfig.provider} - ${result.modelConfig.model}`,
+    const metrics = {
       tokensPerSec: result.metrics.tokenCount / ((result.metrics.endTime || Date.now()) - result.metrics.startTime) * 1000,
       cost: result.metrics.estimatedCost,
-      tokens: result.metrics.tokenCount
+      tokens: result.metrics.tokenCount,
     };
 
+    // Add evaluation scores if they exist
+    if (result.scores) {
+      Object.entries(result.scores).forEach(([key, value]) => {
+        metrics[key] = value * 100; // Convert to percentage
+      });
+    }
+
     return {
-      ...baseData,
-      ...(result.scores || {})
+      name: `${result.modelConfig.provider} - ${result.modelConfig.model}`,
+      ...metrics
     };
   });
 
@@ -99,7 +104,7 @@ export function ModelArena({
         <div className="flex gap-4">
           <div className="flex items-center gap-2">
             <span className="text-sm">Test Prompt:</span>
-            <Select value={testCase}>
+            <Select value={testCase} disabled>
               <SelectTrigger className="w-[200px]">
                 <SelectValue placeholder="Test 1" />
               </SelectTrigger>
@@ -113,7 +118,7 @@ export function ModelArena({
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {allMetrics.map(metric => (
+                {metrics.map(metric => (
                   <SelectItem key={metric.id} value={metric.id}>
                     {metric.name}
                   </SelectItem>
@@ -124,7 +129,7 @@ export function ModelArena({
         </div>
       </div>
 
-      <Tabs value={selectedView} onValueChange={setSelectedView}>
+      <Tabs defaultValue="comparison">
         <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="comparison">Comparison View</TabsTrigger>
           <TabsTrigger value="detailed">Detailed View</TabsTrigger>
@@ -165,14 +170,14 @@ export function ModelArena({
 
                 <div className="bg-secondary p-3 rounded min-h-[150px] text-sm whitespace-pre-wrap">
                   <h4 className="font-medium mb-2">Response:</h4>
-                  {result.response || "No response"}
+                  {result.response || "No response generated"}
                 </div>
 
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-2">
                     <Label className="text-xs">Performance Metrics</Label>
                     <div className="grid grid-cols-2 gap-2 text-xs">
-                      <div>Tokens/sec: {result.metrics.tokenCount / ((result.metrics.endTime || Date.now()) - result.metrics.startTime) * 1000}</div>
+                      <div>Tokens/sec: {(result.metrics.tokenCount / ((result.metrics.endTime || Date.now()) - result.metrics.startTime) * 1000).toFixed(1)}</div>
                       <div>Cost: ${result.metrics.estimatedCost.toFixed(4)}</div>
                       <div>Tokens: {result.metrics.tokenCount}</div>
                     </div>
@@ -203,7 +208,7 @@ export function ModelArena({
               <TableHeader>
                 <TableRow>
                   <TableHead>Model</TableHead>
-                  {allMetrics.map(metric => (
+                  {metrics.map(metric => (
                     <TableHead key={metric.id}>{metric.name}</TableHead>
                   ))}
                 </TableRow>
@@ -212,7 +217,7 @@ export function ModelArena({
                 {results.map((result, index) => (
                   <TableRow key={index}>
                     <TableCell>{result.modelConfig.provider} - {result.modelConfig.model}</TableCell>
-                    {allMetrics.map(metric => (
+                    {metrics.map(metric => (
                       <TableCell key={metric.id}>
                         {metric.id === "tokensPerSec" && 
                           `${(result.metrics.tokenCount / ((result.metrics.endTime || Date.now()) - result.metrics.startTime) * 1000).toFixed(1)}/s`}
