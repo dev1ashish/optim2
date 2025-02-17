@@ -3,7 +3,7 @@ import { Card } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
 import { Progress } from "@/components/ui/progress";
 import type { ModelConfig } from "@/components/settings/model-settings-section";
-import { Gauge, ArrowUpDown } from "lucide-react";
+import type { EvaluationCriterion } from "@shared/schema";
 import type { StreamMetrics } from "@/lib/openai";
 import { ModelArenaDialog } from "./model-arena-dialog";
 import {
@@ -13,11 +13,35 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from "@/components/ui/tabs";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+} from "recharts";
 
 interface ModelComparisonResult {
   modelConfig: ModelConfig;
   response: string;
   metrics: StreamMetrics;
+  scores?: Record<string, number>;
   isStreaming: boolean;
   streamProgress: number;
   error?: string;
@@ -28,6 +52,7 @@ interface ModelArenaProps {
   promptVariation: string;
   promptVariationIndex: number;
   modelConfigs: ModelConfig[];
+  evaluationCriteria: EvaluationCriterion[];
   onStartComparison: (configs: ModelConfig[]) => Promise<void>;
   results: ModelComparisonResult[];
 }
@@ -37,130 +62,175 @@ export function ModelArena({
   promptVariation,
   promptVariationIndex,
   modelConfigs,
+  evaluationCriteria,
   onStartComparison,
   results
 }: ModelArenaProps) {
-  const [selectedMetric, setSelectedMetric] = useState<string>("tokensPerSec");
+  const [selectedMetric, setSelectedMetric] = useState<string>("accuracy");
+  const [selectedView, setSelectedView] = useState<string>("comparison");
 
-  // Calculate summary metrics
-  const totalCost = results.reduce((acc, result) => acc + result.metrics.estimatedCost, 0);
-  const avgTokensPerSec = results.reduce((acc, result) => {
-    const duration = (result.metrics.endTime || Date.now()) - result.metrics.startTime;
-    return acc + (result.metrics.tokenCount / (duration / 1000));
-  }, 0) / Math.max(1, results.length);
-  const totalTokens = results.reduce((acc, result) => acc + result.metrics.tokenCount, 0);
+  // Get all available metrics including evaluation criteria
+  const allMetrics = [
+    { id: "tokensPerSec", name: "Tokens/sec" },
+    { id: "cost", name: "Cost" },
+    { id: "tokens", name: "Total Tokens" },
+    ...evaluationCriteria.map(c => ({ id: c.id, name: c.name }))
+  ];
 
-  const isProcessing = results.some(r => r.isStreaming);
-  const avgProgress = results.reduce((acc, r) => acc + r.streamProgress, 0) / results.length;
+  // Process results for visualization
+  const processedData = results.map(result => {
+    const baseData = {
+      name: `${result.modelConfig.provider} - ${result.modelConfig.model}`,
+      tokensPerSec: result.metrics.tokenCount / ((result.metrics.endTime || Date.now()) - result.metrics.startTime) * 1000,
+      cost: result.metrics.estimatedCost,
+      tokens: result.metrics.tokenCount
+    };
 
-  // Get the best performing model based on selected metric
-  const getBestModel = () => {
-    if (!results.length) return null;
-
-    return results.reduce((best, current) => {
-      let currentValue: number;
-      let bestValue: number;
-
-      switch (selectedMetric) {
-        case "tokensPerSec":
-          currentValue = current.metrics.tokenCount / ((current.metrics.endTime || Date.now()) - current.metrics.startTime) * 1000;
-          bestValue = best.metrics.tokenCount / ((best.metrics.endTime || Date.now()) - best.metrics.startTime) * 1000;
-          return currentValue > bestValue ? current : best;
-        case "cost":
-          return current.metrics.estimatedCost < best.metrics.estimatedCost ? current : best;
-        case "tokens":
-          return current.metrics.tokenCount < best.metrics.tokenCount ? current : best;
-        default:
-          return best;
-      }
-    });
-  };
-
-  const bestModel = getBestModel();
+    return {
+      ...baseData,
+      ...(result.scores || {})
+    };
+  });
 
   return (
-    <Card className="p-4 hover:shadow-lg transition-shadow">
-      <div className="flex justify-between items-start mb-4">
-        <div className="space-y-1">
+    <div className="space-y-6">
+      <div className="flex justify-between items-center">
+        <h2 className="text-2xl font-bold">Prompt Comparison Dashboard</h2>
+        <div className="flex gap-4">
           <div className="flex items-center gap-2">
-            <Gauge className="w-5 h-5" />
-            <Label className="text-lg">Variation {promptVariationIndex + 1}</Label>
+            <span className="text-sm">Test Prompt:</span>
+            <Select value={testCase}>
+              <SelectTrigger className="w-[200px]">
+                <SelectValue placeholder="Test 1" />
+              </SelectTrigger>
+            </Select>
           </div>
-          <p className="text-sm text-muted-foreground font-mono line-clamp-2">
-            {promptVariation}
-          </p>
-        </div>
 
-        <div className="flex items-center gap-4">
-          <Select 
-            value={selectedMetric}
-            onValueChange={setSelectedMetric}
-          >
-            <SelectTrigger className="w-[150px]">
-              <SelectValue placeholder="Select metric" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="tokensPerSec">Tokens/sec</SelectItem>
-              <SelectItem value="cost">Cost</SelectItem>
-              <SelectItem value="tokens">Total Tokens</SelectItem>
-            </SelectContent>
-          </Select>
-
-          {isProcessing && (
-            <Progress value={avgProgress} className="w-20" />
-          )}
+          <div className="flex items-center gap-2">
+            <span className="text-sm">Metric:</span>
+            <Select value={selectedMetric} onValueChange={setSelectedMetric}>
+              <SelectTrigger className="w-[150px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {allMetrics.map(metric => (
+                  <SelectItem key={metric.id} value={metric.id}>
+                    {metric.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </div>
       </div>
 
-      <div className="grid grid-cols-4 gap-4 mb-4 text-sm">
-        <div>
-          <Label className="text-xs">Total Cost</Label>
-          <p className="font-mono">${totalCost.toFixed(4)}</p>
-        </div>
-        <div>
-          <Label className="text-xs">Avg. Tokens/sec</Label>
-          <p className="font-mono">{avgTokensPerSec.toFixed(1)}</p>
-        </div>
-        <div>
-          <Label className="text-xs">Total Tokens</Label>
-          <p className="font-mono">{totalTokens}</p>
-        </div>
-        <div>
-          <Label className="text-xs">Best Model</Label>
-          <p className="font-mono truncate">
-            {bestModel ? `${bestModel.modelConfig.provider} - ${bestModel.modelConfig.model}` : "N/A"}
-          </p>
-        </div>
-      </div>
+      <Tabs value={selectedView} onValueChange={setSelectedView}>
+        <TabsList className="grid w-full grid-cols-3">
+          <TabsTrigger value="comparison">Comparison View</TabsTrigger>
+          <TabsTrigger value="detailed">Detailed View</TabsTrigger>
+          <TabsTrigger value="matrix">Matrix View</TabsTrigger>
+        </TabsList>
 
-      {bestModel && (
-        <div className="mb-4 p-4 bg-secondary rounded-lg">
-          <div className="flex items-center gap-2 mb-2">
-            <ArrowUpDown className="w-4 h-4" />
-            <Label className="font-medium">Best Performing Model</Label>
+        <TabsContent value="comparison">
+          <Card className="p-6">
+            <h3 className="text-lg font-medium mb-4">Metric Comparison</h3>
+            <div className="w-full overflow-x-auto">
+              <BarChart
+                width={800}
+                height={350}
+                data={processedData}
+                margin={{ top: 20, right: 30, left: 20, bottom: 5 }}
+              >
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="name" angle={-45} textAnchor="end" height={100} />
+                <YAxis />
+                <Tooltip />
+                <Legend />
+                <Bar dataKey={selectedMetric} fill="#22c55e" />
+              </BarChart>
+            </div>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="detailed">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {results.map((result, index) => (
+              <Card key={index} className="p-4 space-y-4">
+                <div className="flex justify-between items-center">
+                  <h3 className="font-medium">{result.modelConfig.provider} - {result.modelConfig.model}</h3>
+                  {result.isStreaming && (
+                    <Progress value={result.streamProgress} className="w-20" />
+                  )}
+                </div>
+
+                <div className="bg-secondary p-3 rounded min-h-[150px] text-sm whitespace-pre-wrap">
+                  <h4 className="font-medium mb-2">Response:</h4>
+                  {result.response || "No response"}
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label className="text-xs">Performance Metrics</Label>
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      <div>Tokens/sec: {result.metrics.tokenCount / ((result.metrics.endTime || Date.now()) - result.metrics.startTime) * 1000}</div>
+                      <div>Cost: ${result.metrics.estimatedCost.toFixed(4)}</div>
+                      <div>Tokens: {result.metrics.tokenCount}</div>
+                    </div>
+                  </div>
+
+                  {result.scores && (
+                    <div className="space-y-2">
+                      <Label className="text-xs">Evaluation Metrics</Label>
+                      <div className="space-y-1 text-xs">
+                        {evaluationCriteria.map(criterion => (
+                          <div key={criterion.id} className="flex justify-between">
+                            <span>{criterion.name}:</span>
+                            <span>{((result.scores?.[criterion.id] || 0) * 100).toFixed(0)}%</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </Card>
+            ))}
           </div>
-          <div className="grid grid-cols-3 gap-4 text-sm">
-            <div>
-              <Label className="text-xs">Model</Label>
-              <p>{bestModel.modelConfig.provider} - {bestModel.modelConfig.model}</p>
-            </div>
-            <div>
-              <Label className="text-xs">Performance</Label>
-              <p className="font-mono">
-                {selectedMetric === "tokensPerSec" && `${(bestModel.metrics.tokenCount / ((bestModel.metrics.endTime || Date.now()) - bestModel.metrics.startTime) * 1000).toFixed(1)} tokens/sec`}
-                {selectedMetric === "cost" && `$${bestModel.metrics.estimatedCost.toFixed(4)}`}
-                {selectedMetric === "tokens" && `${bestModel.metrics.tokenCount} tokens`}
-              </p>
-            </div>
-            <div>
-              <Label className="text-xs">Response Time</Label>
-              <p className="font-mono">
-                {((bestModel.metrics.endTime || Date.now()) - bestModel.metrics.startTime).toFixed(2)}ms
-              </p>
-            </div>
-          </div>
-        </div>
-      )}
+        </TabsContent>
+
+        <TabsContent value="matrix">
+          <Card className="p-4">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Model</TableHead>
+                  {allMetrics.map(metric => (
+                    <TableHead key={metric.id}>{metric.name}</TableHead>
+                  ))}
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {results.map((result, index) => (
+                  <TableRow key={index}>
+                    <TableCell>{result.modelConfig.provider} - {result.modelConfig.model}</TableCell>
+                    {allMetrics.map(metric => (
+                      <TableCell key={metric.id}>
+                        {metric.id === "tokensPerSec" && 
+                          `${(result.metrics.tokenCount / ((result.metrics.endTime || Date.now()) - result.metrics.startTime) * 1000).toFixed(1)}/s`}
+                        {metric.id === "cost" && 
+                          `$${result.metrics.estimatedCost.toFixed(4)}`}
+                        {metric.id === "tokens" && 
+                          result.metrics.tokenCount}
+                        {result.scores && metric.id in result.scores && 
+                          `${(result.scores[metric.id] * 100).toFixed(0)}%`}
+                      </TableCell>
+                    ))}
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </Card>
+        </TabsContent>
+      </Tabs>
 
       <ModelArenaDialog
         testCase={testCase}
@@ -168,8 +238,7 @@ export function ModelArena({
         promptVariationIndex={promptVariationIndex}
         modelConfigs={modelConfigs}
         onStartComparison={onStartComparison}
-        results={results}
       />
-    </Card>
+    </div>
   );
 }
