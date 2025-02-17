@@ -120,6 +120,7 @@ export interface StreamMetrics {
     endTime?: number;
     tokenCount: number;
     estimatedCost: number;
+    scores?: Record<string, number>;
 }
 
 export async function* streamResponse(
@@ -194,35 +195,59 @@ export async function* streamResponse(
     }
 }
 
-export async function compareModels(
-    prompt: string,
-    testCase: string,
-    configs: ModelConfig[],
-    onProgress: (modelIndex: number, chunk: string, metrics: StreamMetrics) => void
-): Promise<void> {
-    const streams = configs.map((config, index) => {
-        const stream = streamResponse(prompt, testCase, config, (metrics) => {
-            onProgress(index, "", metrics);
-        });
-        return { stream, index };
-    });
+interface EvaluationCriterion {
+  id: string;
+  description: string;
+}
 
-    await Promise.all(
-        streams.map(async ({ stream, index }) => {
-            try {
-                for await (const { chunk, metrics } of stream) {
-                    onProgress(index, chunk, metrics);
-                }
-            } catch (error) {
-                console.error(`Error in model comparison for index ${index}:`, error);
-                onProgress(index, `Error: ${error.message}`, {
-                    startTime: Date.now(),
-                    tokenCount: 0,
-                    estimatedCost: 0
-                });
-            }
-        })
-    );
+export async function compareModels(
+  prompt: string,
+  testCase: string,
+  configs: ModelConfig[],
+  onProgress: (modelIndex: number, chunk: string, metrics: StreamMetrics) => void,
+  evaluationCriteria?: EvaluationCriterion[]
+): Promise<void> {
+  const streams = configs.map((config, index) => {
+    const stream = streamResponse(prompt, testCase, config, (metrics) => {
+      onProgress(index, "", metrics);
+    });
+    return { stream, index, config };
+  });
+
+  await Promise.all(
+    streams.map(async ({ stream, index, config }) => {
+      try {
+        let fullResponse = "";
+        for await (const { chunk, metrics } of stream) {
+          fullResponse += chunk;
+          onProgress(index, chunk, metrics);
+        }
+
+        // If evaluation criteria are provided, evaluate the response
+        if (evaluationCriteria?.length) {
+          const scores = await evaluatePrompt(
+            fullResponse,
+            testCase,
+            evaluationCriteria.reduce((acc, c) => ({ ...acc, [c.id]: 0 }), {}),
+            config
+          );
+          onProgress(index, "", {
+            startTime: Date.now(),
+            tokenCount: 0,
+            estimatedCost: 0,
+            scores
+          });
+        }
+      } catch (error) {
+        console.error(`Error in model comparison for index ${index}:`, error);
+        onProgress(index, `Error: ${error.message}`, {
+          startTime: Date.now(),
+          tokenCount: 0,
+          estimatedCost: 0
+        });
+      }
+    })
+  );
 }
 
 // the newest OpenAI model is "gpt-4o" which was released May 13, 2024. do not change this unless explicitly requested by the user
