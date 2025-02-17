@@ -1,7 +1,6 @@
 import { useState } from "react";
 import { Card } from "@/components/ui/card";
 import { ModelSettingsSection, type ModelConfig } from "@/components/settings/model-settings-section";
-import { EvaluationCriteriaManager } from "./evaluation-criteria-manager";
 import type { EvaluationCriterion, TestCase } from "@shared/schema";
 import { ModelArena } from "./model-arena/model-arena";
 import type { StreamMetrics } from "@/lib/openai";
@@ -67,53 +66,22 @@ export function ComparisonDashboard({
   defaultConfig
 }: ComparisonDashboardProps) {
   const [criteria, setCriteria] = useState<EvaluationCriterion[]>(defaultCriteria);
-  const [selectedVariationIndex, setSelectedVariationIndex] = useState(0);
-  const [modelConfig, setModelConfig] = useState(defaultConfig);
+  const [selectedTestCase, setSelectedTestCase] = useState<TestCase>(testCases[0]);
 
   return (
     <Card className="p-6 space-y-8">
-      <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold">Model Comparison</h2>
-        <ModelSettingsSection
-          title="Default Model Settings"
-          description="Configure the default model settings for comparison"
-          config={modelConfig}
-          onChange={setModelConfig}
-          defaultConfig={defaultConfig}
-          useDefaultSettings={false}
-          onUseDefaultSettingsChange={() => {}}
-        />
-      </div>
-
-      <EvaluationCriteriaManager
-        criteria={criteria}
-        onAddCriterion={(criterion) => {
-          setCriteria([...criteria, criterion]);
-        }}
-        onUpdateCriterion={(id, criterion) => {
-          setCriteria(criteria.map(c => c.id === id ? criterion : c));
-        }}
-        onRemoveCriterion={(id) => {
-          setCriteria(criteria.filter(c => c.id !== id));
-        }}
-        defaultModelConfig={modelConfig}
+      <ModelArena
+        testCases={testCases}
+        selectedTestCase={selectedTestCase}
+        onTestCaseSelect={setSelectedTestCase}
+        modelConfigs={[defaultConfig]}
+        onStartComparison={(configs) =>
+          onCompareModels(variations[0], selectedTestCase.input, configs)
+        }
+        results={modelResults}
+        evaluationCriteria={criteria}
+        onUpdateCriteria={setCriteria}
       />
-
-      {testCases.map((testCase) => (
-        <ModelArena
-          key={testCase.input}
-          testCase={testCase.input}
-          promptVariations={variations}
-          selectedVariationIndex={selectedVariationIndex}
-          onVariationSelect={setSelectedVariationIndex}
-          modelConfigs={[modelConfig]}
-          onStartComparison={(configs) =>
-            onCompareModels(variations[selectedVariationIndex], testCase.input, configs)
-          }
-          results={modelResults}
-          evaluationCriteria={criteria}
-        />
-      ))}
     </Card>
   );
 }
