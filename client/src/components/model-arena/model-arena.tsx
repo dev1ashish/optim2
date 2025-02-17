@@ -8,6 +8,7 @@ import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ModelConfig } from "@/components/settings/model-settings-section";
 import { Gauge, Settings2, Award } from "lucide-react";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, RadarChart, Radar, PolarGrid, PolarAngleAxis, PolarRadiusAxis, ResponsiveContainer } from 'recharts';
 import type { StreamMetrics } from "@/lib/openai";
 import { ModelSelector } from "./model-selector";
 import { EvaluationCriteriaManager } from "../evaluation-criteria-manager";
@@ -45,7 +46,7 @@ export function ModelArena({
 }: ModelArenaProps) {
   const [isComparing, setIsComparing] = useState(false);
   const [selectedConfigs, setSelectedConfigs] = useState<ModelConfig[]>([]);
-  const [viewMode, setViewMode] = useState<"grid" | "matrix">("grid");
+  const [viewMode, setViewMode] = useState<"grid" | "matrix" | "visuals">("grid");
   const [showSettings, setShowSettings] = useState(false);
   const [selectedVariation, setSelectedVariation] = useState<string>(variations[0]);
 
@@ -83,6 +84,25 @@ export function ModelArena({
 
   const bestResult = sortedResults[0];
 
+  // Prepare data for visualizations
+  const performanceChartData = sortedResults.map(result => ({
+    name: `${result.modelConfig.provider} - ${result.modelConfig.model}`,
+    score: calculateWeightedScore(result.scores) * 100,
+    responseTime: result.metrics.endTime ? (result.metrics.endTime - result.metrics.startTime) : 0,
+    tokensPerSecond: result.metrics.tokenCount / (Math.max(1, (result.metrics.endTime || Date.now()) - result.metrics.startTime) / 1000),
+    cost: result.metrics.estimatedCost
+  }));
+
+  const criteriaChartData = sortedResults.map(result => {
+    const data: any = {
+      name: `${result.modelConfig.provider} - ${result.modelConfig.model}`,
+    };
+    evaluationCriteria.forEach(criterion => {
+      data[criterion.name] = (result.scores?.[criterion.id] || 0) * 100;
+    });
+    return data;
+  });
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -100,10 +120,11 @@ export function ModelArena({
           >
             <Settings2 className="h-4 w-4" />
           </Button>
-          <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as "grid" | "matrix")}>
+          <Tabs value={viewMode} onValueChange={(v) => setViewMode(v as "grid" | "matrix" | "visuals")}>
             <TabsList>
               <TabsTrigger value="grid">Grid View</TabsTrigger>
               <TabsTrigger value="matrix">Matrix View</TabsTrigger>
+              <TabsTrigger value="visuals">Visuals</TabsTrigger>
             </TabsList>
           </Tabs>
         </div>
@@ -274,6 +295,9 @@ export function ModelArena({
               <TableHead>Est. Cost</TableHead>
               <TableHead>Total Tokens</TableHead>
               <TableHead>Overall Score</TableHead>
+              {evaluationCriteria.map(criterion => (
+                <TableHead key={criterion.id}>{criterion.name}</TableHead>
+              ))}
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -285,10 +309,76 @@ export function ModelArena({
                 <TableCell>${result.metrics.estimatedCost.toFixed(4)}</TableCell>
                 <TableCell>{result.metrics.tokenCount}</TableCell>
                 <TableCell>{(calculateWeightedScore(result.scores) * 100).toFixed(1)}%</TableCell>
+                {evaluationCriteria.map(criterion => (
+                  <TableCell key={criterion.id}>
+                    {((result.scores?.[criterion.id] || 0) * 100).toFixed(0)}%
+                  </TableCell>
+                ))}
               </TableRow>
             ))}
           </TableBody>
         </Table>
+      )}
+
+      {/* Visuals View */}
+      {viewMode === "visuals" && (
+        <div className="space-y-8">
+          {/* Overall Performance Chart */}
+          <Card className="p-4">
+            <h3 className="text-lg font-medium mb-4">Overall Performance</h3>
+            <ResponsiveContainer width="100%" height={300}>
+              <BarChart data={performanceChartData}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="name" angle={-45} textAnchor="end" height={100} />
+                <YAxis />
+                <Tooltip />
+                <Legend />
+                <Bar dataKey="score" name="Overall Score" fill="#4ade80" />
+              </BarChart>
+            </ResponsiveContainer>
+          </Card>
+
+          {/* Criteria Comparison Chart */}
+          <Card className="p-4">
+            <h3 className="text-lg font-medium mb-4">Criteria Comparison</h3>
+            <ResponsiveContainer width="100%" height={400}>
+              <RadarChart data={criteriaChartData}>
+                <PolarGrid />
+                <PolarAngleAxis dataKey="name" />
+                <PolarRadiusAxis domain={[0, 100]} />
+                {evaluationCriteria.map((criterion, index) => (
+                  <Radar
+                    key={criterion.id}
+                    name={criterion.name}
+                    dataKey={criterion.name}
+                    stroke={`hsl(${index * (360 / evaluationCriteria.length)}, 70%, 50%)`}
+                    fill={`hsl(${index * (360 / evaluationCriteria.length)}, 70%, 50%)`}
+                    fillOpacity={0.3}
+                  />
+                ))}
+                <Legend />
+              </RadarChart>
+            </ResponsiveContainer>
+          </Card>
+
+          {/* Performance Metrics Chart */}
+          <Card className="p-4">
+            <h3 className="text-lg font-medium mb-4">Performance Metrics</h3>
+            <ResponsiveContainer width="100%" height={300}>
+              <BarChart data={performanceChartData}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="name" angle={-45} textAnchor="end" height={100} />
+                <YAxis yAxisId="left" />
+                <YAxis yAxisId="right" orientation="right" />
+                <Tooltip />
+                <Legend />
+                <Bar yAxisId="left" dataKey="responseTime" name="Response Time (ms)" fill="#60a5fa" />
+                <Bar yAxisId="left" dataKey="tokensPerSecond" name="Tokens/sec" fill="#f472b6" />
+                <Bar yAxisId="right" dataKey="cost" name="Cost ($)" fill="#fbbf24" />
+              </BarChart>
+            </ResponsiveContainer>
+          </Card>
+        </div>
       )}
     </div>
   );
