@@ -200,55 +200,123 @@ interface EvaluationCriterion {
   description: string;
 }
 
-export async function compareModels(
-  prompt: string,
-  testCase: string,
-  configs: ModelConfig[],
-  onProgress: (modelIndex: number, chunk: string, metrics: StreamMetrics) => void,
-  evaluationCriteria?: EvaluationCriterion[]
-): Promise<void> {
-  const streams = configs.map((config, index) => {
-    const stream = streamResponse(prompt, testCase, config, (metrics) => {
-      onProgress(index, "", metrics);
-    });
-    return { stream, index, config };
-  });
+export async function evaluatePrompt(
+    response: string,
+    testCase: string,
+    criteria: Record<string, number>,
+    config: ModelConfig
+): Promise<Record<string, number>> {
+    // Force GPT-4o for evaluations with the provided API key
+    const evaluationConfig: ModelConfig = {
+        provider: "openai",
+        model: "gpt-4o",
+        temperature: 0.3, // Lower temperature for consistent evaluations
+        maxTokens: 2000,
+        apiKey: config.apiKey,
+        systemPrompt: "You are an objective evaluator. Your task is to assess responses based on given criteria with fairness and consistency. Provide numerical scores based on clear rubrics and objective analysis."
+    };
 
-  await Promise.all(
-    streams.map(async ({ stream, index, config }) => {
-      try {
-        let fullResponse = "";
-        for await (const { chunk, metrics } of stream) {
-          fullResponse += chunk;
-          onProgress(index, chunk, metrics);
-        }
+    const evaluationPrompt = `Evaluate the following AI response against the given test case and criteria.
 
-        // If evaluation criteria are provided, evaluate the response
-        if (evaluationCriteria?.length) {
-          const scores = await evaluatePrompt(
-            fullResponse,
-            testCase,
-            evaluationCriteria.reduce((acc, c) => ({ ...acc, [c.id]: 0 }), {}),
-            config
-          );
-          onProgress(index, "", {
-            startTime: Date.now(),
-            tokenCount: 0,
-            estimatedCost: 0,
-            scores
-          });
-        }
-      } catch (error) {
-        console.error(`Error in model comparison for index ${index}:`, error);
-        onProgress(index, `Error: ${error.message}`, {
-          startTime: Date.now(),
-          tokenCount: 0,
-          estimatedCost: 0
+Test Case: "${testCase}"
+
+Response to Evaluate: "${response}"
+
+Rate each criterion from 0 to 1 (where 0 is poor and 1 is excellent) based on the following aspects:
+${Object.keys(criteria).map(criterion => `- ${criterion}`).join('\n')}
+
+Return ONLY a JSON object with the scores, no additional text. Example format:
+{
+  "criterionName": 0.85
+}`;
+
+    const client = getClient(evaluationConfig);
+    try {
+        const response = await (client as OpenAI).chat.completions.create({
+            model: evaluationConfig.model,
+            messages: formatMessages(evaluationPrompt, evaluationConfig),
+            temperature: evaluationConfig.temperature,
+            max_tokens: evaluationConfig.maxTokens,
+            response_format: { type: "json_object" }
         });
-      }
-    })
-  );
+
+        const content = response.choices[0].message.content || "{}";
+        try {
+            const result = JSON.parse(content.trim());
+            const validatedScores: Record<string, number> = {};
+            Object.keys(criteria).forEach(key => {
+                const score = result[key];
+                if (typeof score !== 'number' || score < 0 || score > 1) {
+                    validatedScores[key] = 0.5;
+                } else {
+                    validatedScores[key] = score;
+                }
+            });
+            return validatedScores;
+        } catch (parseError) {
+            console.error("Failed to parse evaluation response:", parseError);
+            return Object.keys(criteria).reduce((acc, key) => ({ ...acc, [key]: 0.5 }), {});
+        }
+    } catch (error) {
+        handleApiError(error);
+        return Object.keys(criteria).reduce((acc, key) => ({ ...acc, [key]: 0 }), {});
+    }
 }
+
+export async function compareModels(
+    prompt: string,
+    testCase: string,
+    configs: ModelConfig[],
+    onProgress: (modelIndex: number, chunk: string, metrics: StreamMetrics) => void,
+    evaluationCriteria: EvaluationCriterion[]
+): Promise<void> {
+    const streams = configs.map((config, index) => {
+        const stream = streamResponse(prompt, testCase, config, (metrics) => {
+            onProgress(index, "", metrics);
+        });
+        return { stream, index, config };
+    });
+
+    await Promise.all(
+        streams.map(async ({ stream, index, config }) => {
+            try {
+                let fullResponse = "";
+                for await (const { chunk, metrics } of stream) {
+                    fullResponse += chunk;
+                    onProgress(index, chunk, metrics);
+                }
+
+                // Evaluate using GPT-4o if criteria are provided
+                if (evaluationCriteria?.length) {
+                    const criteriaMap = evaluationCriteria.reduce((acc, c) => ({ ...acc, [c.id]: 0 }), {});
+                    const scores = await evaluatePrompt(
+                        fullResponse,
+                        testCase,
+                        criteriaMap,
+                        config // Pass the original config, evaluatePrompt will force GPT-4o
+                    );
+
+                    onProgress(index, "", {
+                        startTime: Date.now(),
+                        endTime: Date.now(),
+                        tokenCount: 0,
+                        estimatedCost: 0,
+                        scores
+                    });
+                }
+            } catch (error) {
+                console.error(`Error in model comparison for index ${index}:`, error);
+                onProgress(index, `Error: ${error instanceof Error ? error.message : 'Unknown error'}`, {
+                    startTime: Date.now(),
+                    endTime: Date.now(),
+                    tokenCount: 0,
+                    estimatedCost: 0
+                });
+            }
+        })
+    );
+}
+
 
 // the newest OpenAI model is "gpt-4o" which was released May 13, 2024. do not change this unless explicitly requested by the user
 export async function generateMetaPrompt(
@@ -378,76 +446,6 @@ Important: The response must contain exactly ${count} variations, no more and no
     } catch (error) {
         console.error("API Error:", error);
         throw error;
-    }
-}
-
-export async function evaluatePrompt(
-    prompt: string,
-    testCase: string,
-    criteria: Record<string, number>,
-    config: ModelConfig
-): Promise<Record<string, number>> {
-    const evaluationPrompt = `You are an objective evaluator. Analyze the following response against a test case and provide numerical scores.
-
-Input Test Case: "${testCase}"
-
-Response to Evaluate: "${prompt}"
-
-Rate ONLY the following criteria, with scores from 0 to 1 (where 0 is poor and 1 is excellent).
-Required criteria: ${Object.keys(criteria).join(", ")}
-
-Return ONLY a JSON object with exactly these scores, no other text. Example format:
-{
-  "criterionName": 0.85,
-  "anotherCriterion": 0.92
-}`;
-
-    const client = getClient(config);
-    try {
-        let content: string;
-
-        if (config.provider === "anthropic") {
-            const response = await (client as Anthropic).messages.create({
-                model: config.model,
-                max_tokens: config.maxTokens,
-                temperature: config.temperature,
-                messages: formatMessages(evaluationPrompt, config).map(msg => ({
-                    role: msg.role === "system" ? "assistant" : msg.role,
-                    content: msg.content
-                }))
-            });
-            content = response.content[0].text || "";
-        } else {
-            const response = await (client as OpenAI).chat.completions.create({
-                model: config.model,
-                messages: formatMessages(evaluationPrompt, config),
-                temperature: config.temperature,
-                max_tokens: config.maxTokens,
-                response_format: { type: "json_object" }
-            });
-            content = response.choices[0].message.content || "";
-        }
-
-        try {
-            const result = JSON.parse(content.trim());
-            const validatedScores: Record<string, number> = {};
-            Object.keys(criteria).forEach(key => {
-                const score = result[key];
-                if (typeof score !== 'number' || score < 0 || score > 1) {
-                    validatedScores[key] = 0.5;
-                } else {
-                    validatedScores[key] = score;
-                }
-            });
-            return validatedScores;
-        } catch (parseError) {
-            console.error("Failed to parse evaluation response:", parseError);
-            console.error("Raw content:", content);
-            return Object.keys(criteria).reduce((acc, key) => ({ ...acc, [key]: 0.5 }), {});
-        }
-    } catch (error) {
-        handleApiError(error);
-        return Object.keys(criteria).reduce((acc, key) => ({ ...acc, [key]: 0 }), {});
     }
 }
 
