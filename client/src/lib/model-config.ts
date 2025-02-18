@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { ModelConfig } from "@/components/settings/model-settings-section";
 
+// Note: These are the only valid providers we support
 export const VALID_PROVIDERS = ["openai", "anthropic", "gemini", "groq"] as const;
 export type Provider = typeof VALID_PROVIDERS[number];
 

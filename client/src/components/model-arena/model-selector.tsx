@@ -5,7 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { MODEL_CONFIGS, getDefaultConfig } from "@/lib/model-config";
+import { MODEL_CONFIGS } from "@/lib/model-config";
 import type { ModelConfig } from "@/components/settings/model-settings-section";
 
 interface ModelSelectorProps {
@@ -50,7 +50,10 @@ export function ModelSelector({ onModelConfigsChange }: ModelSelectorProps) {
       .flatMap(([provider]) => {
         const providerModels = selectedModels[provider] || [];
         return providerModels.map(modelId => ({
-          ...getDefaultConfig(provider, modelId),
+          provider: provider as "openai" | "anthropic" | "groq" | "gemini",
+          model: modelId,
+          temperature: 0.7,
+          maxTokens: MODEL_CONFIGS[provider as keyof typeof MODEL_CONFIGS].models.find(m => m.id === modelId)?.maxTokens || 4096,
           apiKey: apiKeys[provider]
         }));
       });
