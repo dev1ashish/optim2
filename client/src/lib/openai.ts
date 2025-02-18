@@ -40,6 +40,15 @@ const MODEL_CONFIGS = {
             { id: "llama2-7b-8192", maxTokens: 4096 },
             { id: "mixtral-8x7b-32768", maxTokens: 32768 }
         ]
+    },
+    gemini: {
+        models: [
+            { id: "gemini-2.0-flash", maxTokens: 8192 },
+            { id: "gemini-2.0-flash-lite-preview-02-05", maxTokens: 4096 },
+            { id: "gemini-1.5-flash", maxTokens: 4096 },
+            { id: "gemini-1.5-flash-8b", maxTokens: 4096 },
+            { id: "gemini-1.5-pro", maxTokens: 8192 }
+        ]
     }
 } as const;
 
@@ -57,16 +66,19 @@ function getClient(config: ModelConfig) {
         case "anthropic":
             return new Anthropic({
                 apiKey: config.apiKey,
-                dangerouslyAllowBrowser: true
+                baseURL: "https://api.anthropic.com/v1"
             });
         case "groq":
+            // Based on image_1739876676033.png, using OpenAI client with Groq baseURL
             return new OpenAI({
                 apiKey: config.apiKey,
-                baseURL: "https://api.groq.com/v1",
+                baseURL: "https://api.groq.com/openai/v1",
                 dangerouslyAllowBrowser: true
             });
         case "gemini":
-            throw new Error("Gemini support coming soon");
+            // Based on image_1739876758413.png
+            const { GoogleGenerativeAI } = require("@google/generative-ai");
+            return new GoogleGenerativeAI(config.apiKey);
         default:
             throw new Error(`Unsupported provider: ${config.provider}`);
     }
@@ -145,47 +157,81 @@ export async function* streamResponse(
         const modelConfig = MODEL_CONFIGS[config.provider as Provider].models.find(m => m.id === config.model);
         const maxTokens = modelConfig?.maxTokens || 4096;
 
-        if (config.provider === "anthropic") {
-            const stream = await (client as Anthropic).messages.create({
-                model: config.model,
-                max_tokens: Math.min(config.maxTokens, maxTokens),
-                temperature: config.temperature,
-                messages: formatMessages(testCase, modifiedConfig).map(msg => ({
-                    role: msg.role === "system" ? "assistant" : msg.role,
-                    content: msg.content
-                })),
-                stream: true
-            });
+        switch (config.provider) {
+            case "anthropic":
+                const stream = await (client as Anthropic).messages.create({
+                    model: config.model,
+                    max_tokens: Math.min(config.maxTokens, maxTokens),
+                    temperature: config.temperature,
+                    messages: formatMessages(testCase, modifiedConfig).map(msg => ({
+                        role: msg.role === "system" ? "assistant" : msg.role,
+                        content: msg.content
+                    })),
+                    stream: true
+                });
 
-            for await (const chunk of stream) {
-                if (chunk.type === 'content_block_delta' && chunk.delta?.type === 'text') {
-                    const text = chunk.delta.text;
-                    metrics.tokenCount += text.split(/\s+/).length;
-                    metrics.estimatedCost = metrics.tokenCount * 0.00003;
-                    onMetrics?.(metrics);
-                    yield { chunk: text, metrics };
+                for await (const chunk of stream) {
+                    if (chunk.type === 'content_block_delta' && chunk.delta?.type === 'text') {
+                        const text = chunk.delta.text;
+                        metrics.tokenCount += text.split(/\s+/).length;
+                        metrics.estimatedCost = metrics.tokenCount * 0.00003;
+                        onMetrics?.(metrics);
+                        yield { chunk: text, metrics };
+                    }
                 }
-            }
-        } else if (config.provider === "openai" || config.provider === "groq") {
-            const stream = await (client as OpenAI).chat.completions.create({
-                model: config.model,
-                messages: formatMessages(testCase, modifiedConfig),
-                temperature: config.temperature,
-                max_tokens: Math.min(config.maxTokens, maxTokens),
-                stream: true
-            });
+                break;
 
-            for await (const chunk of stream) {
-                const text = chunk.choices[0]?.delta?.content || "";
-                if (text) {
-                    metrics.tokenCount += text.split(/\s+/).length;
-                    metrics.estimatedCost = metrics.tokenCount * (config.provider === "groq" ? 0.000001 : 0.00001);
-                    onMetrics?.(metrics);
-                    yield { chunk: text, metrics };
+            case "groq":
+                try {
+                    const openaiStream = await (client as OpenAI).chat.completions.create({
+                        model: config.model,
+                        messages: formatMessages(testCase, modifiedConfig),
+                        temperature: config.temperature,
+                        max_tokens: Math.min(config.maxTokens, maxTokens),
+                        stream: true
+                    });
+
+                    for await (const chunk of openaiStream) {
+                        const text = chunk.choices[0]?.delta?.content || "";
+                        if (text) {
+                            metrics.tokenCount += text.split(/\s+/).length;
+                            metrics.estimatedCost = metrics.tokenCount * 0.000001;
+                            onMetrics?.(metrics);
+                            yield { chunk: text, metrics };
+                        }
+                    }
+                } catch (error) {
+                    console.error("Groq API Error:", error);
+                    throw error;
                 }
-            }
-        } else {
-            throw new Error(`Streaming not supported for provider: ${config.provider}`);
+                break;
+
+            case "gemini":
+                try {
+                    const genAI = client;
+                    const model = genAI.getGenerativeModel({ model: config.model });
+                    const prompt = formatMessages(testCase, modifiedConfig)
+                        .map(msg => msg.content)
+                        .join("\n");
+
+                    const result = await model.generateContentStream({
+                        contents: [{ text: prompt }],
+                    });
+
+                    for await (const chunk of result.stream) {
+                        const text = chunk.text();
+                        if (text) {
+                            metrics.tokenCount += text.split(/\s+/).length;
+                            metrics.estimatedCost = metrics.tokenCount * 0.00001;
+                            onMetrics?.(metrics);
+                            yield { chunk: text, metrics };
+                        }
+                    }
+                } catch (error) {
+                    console.error("Gemini API Error:", error);
+                    throw error;
+                }
+                break;
         }
 
         metrics.endTime = Date.now();
@@ -198,56 +244,154 @@ export async function* streamResponse(
 interface EvaluationCriterion {
   id: string;
   description: string;
+  name: string;
+}
+
+export async function evaluatePrompt(
+    response: string,
+    testCase: string,
+    criteria: Record<string, number>,
+    config: ModelConfig
+): Promise<Record<string, number>> {
+    // Force GPT-4o for evaluations
+    const evaluationConfig: ModelConfig = {
+        provider: "openai",
+        model: "gpt-4o",
+        temperature: 0.3,
+        maxTokens: 2000,
+        apiKey: config.apiKey,
+        systemPrompt: "You are an objective evaluator tasked with scoring AI responses against specific criteria."
+    };
+
+    const evaluationPrompt = `Evaluate this AI response against the given test case and criteria.
+
+Test Case: "${testCase}"
+
+Response to Evaluate: "${response}"
+
+Rate each criterion from 0 to 1 (where 0 is poor and 1 is excellent):
+${Object.entries(criteria).map(([criterion]) => `- ${criterion}`).join('\n')}
+
+Provide scores in this exact JSON format:
+{
+${Object.keys(criteria).map(criterion => `  "${criterion}": 0.85`).join(',\n')}
+}
+
+Your response must be valid JSON containing only the scores.`;
+
+    try {
+        console.log("Starting evaluation with GPT-4o");
+        const client = getClient(evaluationConfig);
+
+        const completion = await (client as OpenAI).chat.completions.create({
+            model: evaluationConfig.model,
+            messages: [
+                {
+                    role: "system",
+                    content: evaluationConfig.systemPrompt
+                },
+                {
+                    role: "user",
+                    content: evaluationPrompt
+                }
+            ],
+            temperature: evaluationConfig.temperature,
+            max_tokens: evaluationConfig.maxTokens,
+            response_format: { type: "json_object" }
+        });
+
+        const content = completion.choices[0].message.content;
+        console.log("Raw evaluation response:", content);
+
+        if (!content) {
+            console.error("Empty evaluation response");
+            return Object.keys(criteria).reduce((acc, key) => ({ ...acc, [key]: 0 }), {});
+        }
+
+        const result = JSON.parse(content);
+        const validatedScores: Record<string, number> = {};
+
+        Object.keys(criteria).forEach(key => {
+            const score = result[key];
+            if (typeof score !== 'number' || score < 0 || score > 1) {
+                console.warn(`Invalid score for ${key}:`, score);
+                validatedScores[key] = 0.5;
+            } else {
+                validatedScores[key] = score;
+            }
+        });
+
+        console.log("Final validated scores:", validatedScores);
+        return validatedScores;
+    } catch (error) {
+        console.error("Evaluation error:", error);
+        return Object.keys(criteria).reduce((acc, key) => ({ ...acc, [key]: 0 }), {});
+    }
 }
 
 export async function compareModels(
-  prompt: string,
-  testCase: string,
-  configs: ModelConfig[],
-  onProgress: (modelIndex: number, chunk: string, metrics: StreamMetrics) => void,
-  evaluationCriteria?: EvaluationCriterion[]
+    prompt: string,
+    testCase: string,
+    configs: ModelConfig[],
+    onProgress: (modelIndex: number, chunk: string, metrics: StreamMetrics) => void,
+    evaluationCriteria: EvaluationCriterion[]
 ): Promise<void> {
-  const streams = configs.map((config, index) => {
-    const stream = streamResponse(prompt, testCase, config, (metrics) => {
-      onProgress(index, "", metrics);
-    });
-    return { stream, index, config };
-  });
-
-  await Promise.all(
-    streams.map(async ({ stream, index, config }) => {
-      try {
-        let fullResponse = "";
-        for await (const { chunk, metrics } of stream) {
-          fullResponse += chunk;
-          onProgress(index, chunk, metrics);
-        }
-
-        // If evaluation criteria are provided, evaluate the response
-        if (evaluationCriteria?.length) {
-          const scores = await evaluatePrompt(
-            fullResponse,
-            testCase,
-            evaluationCriteria.reduce((acc, c) => ({ ...acc, [c.id]: 0 }), {}),
-            config
-          );
-          onProgress(index, "", {
-            startTime: Date.now(),
-            tokenCount: 0,
-            estimatedCost: 0,
-            scores
-          });
-        }
-      } catch (error) {
-        console.error(`Error in model comparison for index ${index}:`, error);
-        onProgress(index, `Error: ${error.message}`, {
-          startTime: Date.now(),
-          tokenCount: 0,
-          estimatedCost: 0
+    const streams = configs.map((config, index) => {
+        const stream = streamResponse(prompt, testCase, config, (metrics) => {
+            onProgress(index, "", metrics);
         });
-      }
-    })
-  );
+        return { stream, index, config };
+    });
+
+    await Promise.all(
+        streams.map(async ({ stream, index, config }) => {
+            try {
+                let fullResponse = "";
+                let lastMetrics: StreamMetrics | null = null;
+
+                for await (const { chunk, metrics } of stream) {
+                    fullResponse += chunk;
+                    lastMetrics = metrics;
+                    onProgress(index, chunk, metrics);
+                }
+
+                // Always evaluate using GPT-4o
+                if (evaluationCriteria?.length) {
+                    console.log(`Starting evaluation for model ${index}`);
+                    const criteriaMap = evaluationCriteria.reduce((acc, c) => ({ ...acc, [c.name]: 0 }), {});
+
+                    const scores = await evaluatePrompt(
+                        fullResponse,
+                        testCase,
+                        criteriaMap,
+                        config
+                    );
+
+                    console.log(`Evaluation scores for model ${index}:`, scores);
+
+                    // Merge scores with last metrics
+                    const finalMetrics: StreamMetrics = {
+                        startTime: lastMetrics?.startTime || Date.now(),
+                        endTime: Date.now(),
+                        tokenCount: lastMetrics?.tokenCount || 0,
+                        estimatedCost: lastMetrics?.estimatedCost || 0,
+                        scores
+                    };
+
+                    onProgress(index, "", finalMetrics);
+                }
+            } catch (error) {
+                console.error(`Error in model comparison for index ${index}:`, error);
+                onProgress(index, `Error: ${error instanceof Error ? error.message : 'Unknown error'}`, {
+                    startTime: Date.now(),
+                    endTime: Date.now(),
+                    tokenCount: 0,
+                    estimatedCost: 0,
+                    scores: evaluationCriteria.reduce((acc, c) => ({ ...acc, [c.name]: 0 }), {})
+                });
+            }
+        })
+    );
 }
 
 // the newest OpenAI model is "gpt-4o" which was released May 13, 2024. do not change this unless explicitly requested by the user
@@ -273,14 +417,13 @@ Format the response as a detailed prompt with clear sections for:
 
     try {
         const client = getClient(config);
-        const messages = formatMessages(prompt, config);
 
         if (config.provider === "anthropic") {
             const response = await (client as Anthropic).messages.create({
                 model: config.model,
                 max_tokens: config.maxTokens,
                 temperature: config.temperature,
-                messages: messages.map(msg => ({
+                messages: formatMessages(prompt, config).map(msg => ({
                     role: msg.role === "system" ? "assistant" : msg.role,
                     content: msg.content
                 }))
@@ -289,7 +432,7 @@ Format the response as a detailed prompt with clear sections for:
         } else {
             const response = await (client as OpenAI).chat.completions.create({
                 model: config.model,
-                messages,
+                messages: formatMessages(prompt, config),
                 temperature: config.temperature,
                 max_tokens: config.maxTokens
             });
@@ -326,14 +469,12 @@ Return ONLY a JSON object with this exact structure, containing exactly ${count}
   "variations": [
     "First complete variation text here",
     "Second complete variation text here",
-
+    "Third complete variation text here"
   ]
-}
-Important: The response must contain exactly ${count} variations, no more and no less.`;
+}`;
 
-    const client = getClient(config);
     try {
-        let content: string;
+        const client = getClient(config);
 
         if (config.provider === "anthropic") {
             const response = await (client as Anthropic).messages.create({
@@ -345,7 +486,14 @@ Important: The response must contain exactly ${count} variations, no more and no
                     content: msg.content
                 }))
             });
-            content = response.content[0].text || "";
+            const content = response.content[0].text || "";
+            try {
+                const result = JSON.parse(content);
+                return result.variations.slice(0, count);
+            } catch (error) {
+                console.error("Failed to parse variations:", error);
+                return [];
+            }
         } else {
             const response = await (client as OpenAI).chat.completions.create({
                 model: config.model,
@@ -354,100 +502,18 @@ Important: The response must contain exactly ${count} variations, no more and no
                 max_tokens: Math.max(config.maxTokens, 4096),
                 response_format: { type: "json_object" }
             });
-            content = response.choices[0].message.content || "";
-        }
-
-        try {
-            const result = JSON.parse(content);
-            if (!Array.isArray(result.variations)) {
-                console.error("Invalid response format - variations is not an array");
+            const content = response.choices[0].message.content || "";
+            try {
+                const result = JSON.parse(content);
+                return result.variations.slice(0, count);
+            } catch (error) {
+                console.error("Failed to parse variations:", error);
                 return [];
             }
-
-            if (result.variations.length !== count) {
-                console.warn(`Expected ${count} variations but received ${result.variations.length}`);
-            }
-
-            return result.variations
-                .slice(0, count)
-                .map((v: any) => typeof v === 'string' ? v : JSON.stringify(v));
-        } catch (error) {
-            console.error("JSON Parse Error:", error);
-            return [];
-        }
-    } catch (error) {
-        console.error("API Error:", error);
-        throw error;
-    }
-}
-
-export async function evaluatePrompt(
-    prompt: string,
-    testCase: string,
-    criteria: Record<string, number>,
-    config: ModelConfig
-): Promise<Record<string, number>> {
-    const evaluationPrompt = `You are an objective evaluator. Analyze the following response against a test case and provide numerical scores.
-
-Input Test Case: "${testCase}"
-
-Response to Evaluate: "${prompt}"
-
-Rate ONLY the following criteria, with scores from 0 to 1 (where 0 is poor and 1 is excellent).
-Required criteria: ${Object.keys(criteria).join(", ")}
-
-Return ONLY a JSON object with exactly these scores, no other text. Example format:
-{
-  "criterionName": 0.85,
-  "anotherCriterion": 0.92
-}`;
-
-    const client = getClient(config);
-    try {
-        let content: string;
-
-        if (config.provider === "anthropic") {
-            const response = await (client as Anthropic).messages.create({
-                model: config.model,
-                max_tokens: config.maxTokens,
-                temperature: config.temperature,
-                messages: formatMessages(evaluationPrompt, config).map(msg => ({
-                    role: msg.role === "system" ? "assistant" : msg.role,
-                    content: msg.content
-                }))
-            });
-            content = response.content[0].text || "";
-        } else {
-            const response = await (client as OpenAI).chat.completions.create({
-                model: config.model,
-                messages: formatMessages(evaluationPrompt, config),
-                temperature: config.temperature,
-                max_tokens: config.maxTokens,
-                response_format: { type: "json_object" }
-            });
-            content = response.choices[0].message.content || "";
-        }
-
-        try {
-            const result = JSON.parse(content.trim());
-            const validatedScores: Record<string, number> = {};
-            Object.keys(criteria).forEach(key => {
-                const score = result[key];
-                if (typeof score !== 'number' || score < 0 || score > 1) {
-                    validatedScores[key] = 0.5;
-                } else {
-                    validatedScores[key] = score;
-                }
-            });
-            return validatedScores;
-        } catch (parseError) {
-            console.error("Failed to parse evaluation response:", parseError);
-            console.error("Raw content:", content);
-            return Object.keys(criteria).reduce((acc, key) => ({ ...acc, [key]: 0.5 }), {});
         }
     } catch (error) {
         handleApiError(error);
-        return Object.keys(criteria).reduce((acc, key) => ({ ...acc, [key]: 0 }), {});
+        return [];
     }
 }
 
