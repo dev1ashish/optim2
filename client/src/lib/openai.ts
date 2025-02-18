@@ -198,7 +198,7 @@ export async function* streamResponse(
 interface EvaluationCriterion {
   id: string;
   description: string;
-  name: string; // Added name property for consistency
+  name: string;
 }
 
 export async function evaluatePrompt(
@@ -348,7 +348,6 @@ export async function compareModels(
     );
 }
 
-
 // the newest OpenAI model is "gpt-4o" which was released May 13, 2024. do not change this unless explicitly requested by the user
 export async function generateMetaPrompt(
     input: MetaPromptInput,
@@ -372,14 +371,13 @@ Format the response as a detailed prompt with clear sections for:
 
     try {
         const client = getClient(config);
-        const messages = formatMessages(prompt, config);
 
         if (config.provider === "anthropic") {
             const response = await (client as Anthropic).messages.create({
                 model: config.model,
                 max_tokens: config.maxTokens,
                 temperature: config.temperature,
-                messages: messages.map(msg => ({
+                messages: formatMessages(prompt, config).map(msg => ({
                     role: msg.role === "system" ? "assistant" : msg.role,
                     content: msg.content
                 }))
@@ -388,7 +386,7 @@ Format the response as a detailed prompt with clear sections for:
         } else {
             const response = await (client as OpenAI).chat.completions.create({
                 model: config.model,
-                messages,
+                messages: formatMessages(prompt, config),
                 temperature: config.temperature,
                 max_tokens: config.maxTokens
             });
@@ -425,14 +423,12 @@ Return ONLY a JSON object with this exact structure, containing exactly ${count}
   "variations": [
     "First complete variation text here",
     "Second complete variation text here",
-
+    "Third complete variation text here"
   ]
-}
-Important: The response must contain exactly ${count} variations, no more and no less.`;
+}`;
 
-    const client = getClient(config);
     try {
-        let content: string;
+        const client = getClient(config);
 
         if (config.provider === "anthropic") {
             const response = await (client as Anthropic).messages.create({
@@ -444,7 +440,14 @@ Important: The response must contain exactly ${count} variations, no more and no
                     content: msg.content
                 }))
             });
-            content = response.content[0].text || "";
+            const content = response.content[0].text || "";
+            try {
+                const result = JSON.parse(content);
+                return result.variations.slice(0, count);
+            } catch (error) {
+                console.error("Failed to parse variations:", error);
+                return [];
+            }
         } else {
             const response = await (client as OpenAI).chat.completions.create({
                 model: config.model,
@@ -453,30 +456,18 @@ Important: The response must contain exactly ${count} variations, no more and no
                 max_tokens: Math.max(config.maxTokens, 4096),
                 response_format: { type: "json_object" }
             });
-            content = response.choices[0].message.content || "";
-        }
-
-        try {
-            const result = JSON.parse(content);
-            if (!Array.isArray(result.variations)) {
-                console.error("Invalid response format - variations is not an array");
+            const content = response.choices[0].message.content || "";
+            try {
+                const result = JSON.parse(content);
+                return result.variations.slice(0, count);
+            } catch (error) {
+                console.error("Failed to parse variations:", error);
                 return [];
             }
-
-            if (result.variations.length !== count) {
-                console.warn(`Expected ${count} variations but received ${result.variations.length}`);
-            }
-
-            return result.variations
-                .slice(0, count)
-                .map((v: any) => typeof v === 'string' ? v : JSON.stringify(v));
-        } catch (error) {
-            console.error("JSON Parse Error:", error);
-            return [];
         }
     } catch (error) {
-        console.error("API Error:", error);
-        throw error;
+        handleApiError(error);
+        return [];
     }
 }
 
