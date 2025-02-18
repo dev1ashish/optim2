@@ -20,13 +20,11 @@ export function ModelSelector({ onModelConfigsChange }: ModelSelectorProps) {
   const handleProviderToggle = (provider: string, checked: boolean) => {
     setSelectedProviders(prev => ({ ...prev, [provider]: checked }));
     if (!checked) {
-      // Remove API key and selected models when provider is deselected
       const { [provider]: _, ...restApiKeys } = apiKeys;
       const { [provider]: __, ...restModels } = selectedModels;
       setApiKeys(restApiKeys);
       setSelectedModels(restModels);
     } else {
-      // Initialize empty array for selected models when provider is selected
       setSelectedModels(prev => ({ ...prev, [provider]: [] }));
     }
   };
@@ -49,13 +47,16 @@ export function ModelSelector({ onModelConfigsChange }: ModelSelectorProps) {
       .filter(([_, selected]) => selected)
       .flatMap(([provider]) => {
         const providerModels = selectedModels[provider] || [];
-        return providerModels.map(modelId => ({
-          provider: provider as "openai" | "anthropic" | "groq" | "gemini",
-          model: modelId,
-          temperature: 0.7,
-          maxTokens: MODEL_CONFIGS[provider as keyof typeof MODEL_CONFIGS].models.find(m => m.id === modelId)?.maxTokens || 4096,
-          apiKey: apiKeys[provider]
-        }));
+        return providerModels.map(modelId => {
+          const model = MODEL_CONFIGS[provider as keyof typeof MODEL_CONFIGS].models.find(m => m.id === modelId);
+          return {
+            provider: provider as "openai" | "anthropic" | "groq" | "gemini",
+            model: modelId,
+            temperature: 0.7,
+            maxTokens: model?.maxTokens || 4096,
+            apiKey: apiKeys[provider]
+          };
+        });
       });
     onModelConfigsChange(configs);
   };

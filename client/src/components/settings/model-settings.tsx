@@ -2,13 +2,11 @@ import { useState, useEffect } from "react";
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { Settings2 } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -20,6 +18,8 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { useToast } from "@/hooks/use-toast";
+import { Settings2 } from "lucide-react";
+import { MODEL_CONFIGS } from "@/lib/model-config";
 
 export interface ModelConfig {
   provider: "openai" | "anthropic" | "groq" | "gemini";
@@ -34,15 +34,6 @@ interface ModelSettingsProps {
   config: ModelConfig;
   onChange: (config: ModelConfig) => void;
 }
-
-// Assuming MODEL_CONFIGS is defined elsewhere and looks something like this:
-const MODEL_CONFIGS = {
-  openai: { models: [{ id: "gpt-4o", name: "GPT-4 (0301)", maxTokens: 4096 }, { id: "gpt-4", name: "GPT-4", maxTokens: 8192 }, { id: "gpt-3.5-turbo", name: "GPT-3.5-Turbo", maxTokens: 4096 }] },
-  anthropic: { models: [{ id: "claude-3-opus", name: "Claude 3 Opus", maxTokens: 4096 }, { id: "claude-3-sonnet", name: "Claude 3 Sonnet", maxTokens: 4096 }, { id: "claude-3-haiku", name: "Claude 3 Haiku", maxTokens: 4096 }] },
-  groq: { models: [{ id: "mixtral-8x7b", name: "Mixtral 8x7b", maxTokens: 4096 }, { id: "llama2-70b", name: "Llama 2 70b", maxTokens: 4096 }] },
-  gemini: { models: [{ id: "gemini-pro", name: "Gemini Pro", maxTokens: 32768 }] }
-};
-
 
 export function ModelSettings({ config, onChange }: ModelSettingsProps) {
   const [open, setOpen] = useState(false);
@@ -81,9 +72,6 @@ export function ModelSettings({ config, onChange }: ModelSettingsProps) {
       <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
           <DialogTitle>Model Settings</DialogTitle>
-          <DialogDescription>
-            Configure the AI model and its parameters
-          </DialogDescription>
         </DialogHeader>
         <div className="grid gap-4 py-4">
           <div className="grid gap-2">
@@ -101,7 +89,12 @@ export function ModelSettings({ config, onChange }: ModelSettingsProps) {
             <Select
               value={config.provider}
               onValueChange={(value: ModelConfig["provider"]) =>
-                onChange({ ...config, provider: value, model: MODEL_CONFIGS[value].models[0].id })
+                onChange({ 
+                  ...config, 
+                  provider: value,
+                  model: MODEL_CONFIGS[value].models[0].id,
+                  maxTokens: MODEL_CONFIGS[value].models[0].maxTokens 
+                })
               }
             >
               <SelectTrigger>
@@ -120,13 +113,14 @@ export function ModelSettings({ config, onChange }: ModelSettingsProps) {
             <Label>Model</Label>
             <Select
               value={config.model}
-              onValueChange={(value) =>
+              onValueChange={(value) => {
+                const selectedModel = MODEL_CONFIGS[config.provider].models.find(m => m.id === value);
                 onChange({
                   ...config,
                   model: value,
-                  maxTokens: MODEL_CONFIGS[config.provider].models.find(m => m.id === value)?.maxTokens || 4096
-                })
-              }
+                  maxTokens: selectedModel?.maxTokens || 4096
+                });
+              }}
             >
               <SelectTrigger>
                 <SelectValue />
