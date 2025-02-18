@@ -66,12 +66,13 @@ function getClient(config: ModelConfig) {
         case "anthropic":
             return new Anthropic({
                 apiKey: config.apiKey,
+                baseURL: "https://api.anthropic.com/v1"
             });
         case "groq":
             // Based on image_1739876676033.png, using OpenAI client with Groq baseURL
             return new OpenAI({
                 apiKey: config.apiKey,
-                baseURL: "https://api.groq.com/v1",
+                baseURL: "https://api.groq.com/openai/v1",
                 dangerouslyAllowBrowser: true
             });
         case "gemini":
