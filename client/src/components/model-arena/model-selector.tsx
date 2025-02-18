@@ -5,19 +5,19 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { MODEL_CONFIGS } from "@/lib/model-config";
-import type { ModelConfig } from "@/components/settings/model-settings-section";
+import { MODEL_CONFIGS, type Provider, getDefaultConfig } from "@/lib/model-config";
+import type { ModelConfig } from "@/components/settings/model-settings";
 
 interface ModelSelectorProps {
   onModelConfigsChange: (configs: ModelConfig[]) => void;
 }
 
 export function ModelSelector({ onModelConfigsChange }: ModelSelectorProps) {
-  const [selectedProviders, setSelectedProviders] = useState<Record<string, boolean>>({});
-  const [apiKeys, setApiKeys] = useState<Record<string, string>>({});
-  const [selectedModels, setSelectedModels] = useState<Record<string, string[]>>({});
+  const [selectedProviders, setSelectedProviders] = useState<Record<Provider, boolean>>({} as Record<Provider, boolean>);
+  const [apiKeys, setApiKeys] = useState<Record<Provider, string>>({} as Record<Provider, boolean>);
+  const [selectedModels, setSelectedModels] = useState<Record<Provider, string[]>>({} as Record<Provider, string[]>);
 
-  const handleProviderToggle = (provider: string, checked: boolean) => {
+  const handleProviderToggle = (provider: Provider, checked: boolean) => {
     setSelectedProviders(prev => ({ ...prev, [provider]: checked }));
     if (!checked) {
       const { [provider]: _, ...restApiKeys } = apiKeys;
@@ -29,11 +29,11 @@ export function ModelSelector({ onModelConfigsChange }: ModelSelectorProps) {
     }
   };
 
-  const handleApiKeyChange = (provider: string, key: string) => {
+  const handleApiKeyChange = (provider: Provider, key: string) => {
     setApiKeys(prev => ({ ...prev, [provider]: key }));
   };
 
-  const handleModelToggle = (provider: string, modelId: string, checked: boolean) => {
+  const handleModelToggle = (provider: Provider, modelId: string, checked: boolean) => {
     setSelectedModels(prev => ({
       ...prev,
       [provider]: checked 
@@ -46,18 +46,13 @@ export function ModelSelector({ onModelConfigsChange }: ModelSelectorProps) {
     const configs: ModelConfig[] = Object.entries(selectedProviders)
       .filter(([_, selected]) => selected)
       .flatMap(([provider]) => {
-        const providerModels = selectedModels[provider] || [];
-        return providerModels.map(modelId => {
-          const model = MODEL_CONFIGS[provider as keyof typeof MODEL_CONFIGS].models.find(m => m.id === modelId);
-          return {
-            provider: provider as "openai" | "anthropic" | "groq" | "gemini",
-            model: modelId,
-            temperature: 0.7,
-            maxTokens: model?.maxTokens || 4096,
-            apiKey: apiKeys[provider]
-          };
-        });
+        const providerModels = selectedModels[provider as Provider] || [];
+        return providerModels.map(modelId => ({
+          ...getDefaultConfig(provider as Provider, modelId),
+          apiKey: apiKeys[provider as Provider]
+        }));
       });
+
     onModelConfigsChange(configs);
   };
 
@@ -70,20 +65,20 @@ export function ModelSelector({ onModelConfigsChange }: ModelSelectorProps) {
           <div key={provider} className="space-y-2">
             <div className="flex items-center gap-2">
               <Checkbox
-                checked={selectedProviders[provider] || false}
-                onCheckedChange={(checked) => handleProviderToggle(provider, checked as boolean)}
+                checked={selectedProviders[provider as Provider] || false}
+                onCheckedChange={(checked) => handleProviderToggle(provider as Provider, checked as boolean)}
               />
               <Label>{config.name}</Label>
             </div>
 
-            {selectedProviders[provider] && (
+            {selectedProviders[provider as Provider] && (
               <div className="ml-6 space-y-2">
                 <div>
                   <Label className="text-sm">API Key</Label>
                   <Input
                     type="password"
-                    value={apiKeys[provider] || ""}
-                    onChange={(e) => handleApiKeyChange(provider, e.target.value)}
+                    value={apiKeys[provider as Provider] || ""}
+                    onChange={(e) => handleApiKeyChange(provider as Provider, e.target.value)}
                     placeholder={`Enter ${config.name} API Key`}
                   />
                 </div>
@@ -95,9 +90,9 @@ export function ModelSelector({ onModelConfigsChange }: ModelSelectorProps) {
                       {config.models.map((model) => (
                         <div key={model.id} className="flex items-center gap-2">
                           <Checkbox
-                            checked={(selectedModels[provider] || []).includes(model.id)}
+                            checked={(selectedModels[provider as Provider] || []).includes(model.id)}
                             onCheckedChange={(checked) => 
-                              handleModelToggle(provider, model.id, checked as boolean)
+                              handleModelToggle(provider as Provider, model.id, checked as boolean)
                             }
                           />
                           <span className="text-sm">{model.name}</span>

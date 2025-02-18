@@ -1,11 +1,22 @@
+import type { ModelConfig } from "@/components/settings/model-settings";
 import { z } from "zod";
-import type { ModelConfig } from "@/components/settings/model-settings-section";
 
 // Note: These are the only valid providers we support
 export const VALID_PROVIDERS = ["openai", "anthropic", "gemini", "groq"] as const;
 export type Provider = typeof VALID_PROVIDERS[number];
 
-export const MODEL_CONFIGS = {
+export interface ModelInfo {
+  id: string;
+  name: string;
+  maxTokens: number;
+}
+
+export interface ProviderConfig {
+  name: string;
+  models: ModelInfo[];
+}
+
+export const MODEL_CONFIGS: Record<Provider, ProviderConfig> = {
   openai: {
     name: "OpenAI",
     models: [
@@ -49,11 +60,14 @@ export const MODEL_CONFIGS = {
   }
 } as const;
 
-export const getDefaultConfig = (provider: Provider, modelId: string): ModelConfig => ({
-  provider,
-  model: modelId,
-  temperature: 0.7,
-  maxTokens: MODEL_CONFIGS[provider].models.find(m => m.id === modelId)?.maxTokens || 4096,
-  apiKey: "",
-  systemPrompt: ""
-});
+export function getDefaultConfig(provider: Provider, modelId: string): ModelConfig {
+  const model = MODEL_CONFIGS[provider].models.find(m => m.id === modelId);
+  return {
+    provider,
+    model: modelId,
+    temperature: 0.7,
+    maxTokens: model?.maxTokens || 4096,
+    apiKey: "",
+    systemPrompt: ""
+  };
+}

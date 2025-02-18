@@ -19,10 +19,10 @@ import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { useToast } from "@/hooks/use-toast";
 import { Settings2 } from "lucide-react";
-import { MODEL_CONFIGS } from "@/lib/model-config";
+import { MODEL_CONFIGS, type Provider } from "@/lib/model-config";
 
 export interface ModelConfig {
-  provider: "openai" | "anthropic" | "groq" | "gemini";
+  provider: Provider;
   model: string;
   temperature: number;
   maxTokens: number;
@@ -62,6 +62,27 @@ export function ModelSettings({ config, onChange }: ModelSettingsProps) {
     });
   };
 
+  const handleProviderChange = (value: Provider) => {
+    const newModel = MODEL_CONFIGS[value].models[0];
+    onChange({
+      ...config,
+      provider: value,
+      model: newModel.id,
+      maxTokens: newModel.maxTokens
+    });
+  };
+
+  const handleModelChange = (modelId: string) => {
+    const model = MODEL_CONFIGS[config.provider].models.find(m => m.id === modelId);
+    if (model) {
+      onChange({
+        ...config,
+        model: modelId,
+        maxTokens: model.maxTokens
+      });
+    }
+  };
+
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
@@ -80,7 +101,7 @@ export function ModelSettings({ config, onChange }: ModelSettingsProps) {
               type="password"
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}
-              placeholder={`Enter your ${config.provider} API key`}
+              placeholder={`Enter your ${MODEL_CONFIGS[config.provider].name} API key`}
             />
           </div>
 
@@ -88,23 +109,17 @@ export function ModelSettings({ config, onChange }: ModelSettingsProps) {
             <Label>Provider</Label>
             <Select
               value={config.provider}
-              onValueChange={(value: ModelConfig["provider"]) =>
-                onChange({ 
-                  ...config, 
-                  provider: value,
-                  model: MODEL_CONFIGS[value].models[0].id,
-                  maxTokens: MODEL_CONFIGS[value].models[0].maxTokens 
-                })
-              }
+              onValueChange={handleProviderChange}
             >
               <SelectTrigger>
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="openai">OpenAI</SelectItem>
-                <SelectItem value="anthropic">Anthropic</SelectItem>
-                <SelectItem value="groq">Groq</SelectItem>
-                <SelectItem value="gemini">Google</SelectItem>
+                {Object.entries(MODEL_CONFIGS).map(([provider, config]) => (
+                  <SelectItem key={provider} value={provider}>
+                    {config.name}
+                  </SelectItem>
+                ))}
               </SelectContent>
             </Select>
           </div>
@@ -113,14 +128,7 @@ export function ModelSettings({ config, onChange }: ModelSettingsProps) {
             <Label>Model</Label>
             <Select
               value={config.model}
-              onValueChange={(value) => {
-                const selectedModel = MODEL_CONFIGS[config.provider].models.find(m => m.id === value);
-                onChange({
-                  ...config,
-                  model: value,
-                  maxTokens: selectedModel?.maxTokens || 4096
-                });
-              }}
+              onValueChange={handleModelChange}
             >
               <SelectTrigger>
                 <SelectValue />
