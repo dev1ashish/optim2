@@ -40,6 +40,15 @@ const MODEL_CONFIGS = {
             { id: "llama2-7b-8192", maxTokens: 4096 },
             { id: "mixtral-8x7b-32768", maxTokens: 32768 }
         ]
+    },
+    gemini: {
+        models: [
+            { id: "gemini-2.0-flash", maxTokens: 8192 },
+            { id: "gemini-2.0-flash-lite-preview-02-05", maxTokens: 4096 },
+            { id: "gemini-1.5-flash", maxTokens: 4096 },
+            { id: "gemini-1.5-flash-8b", maxTokens: 4096 },
+            { id: "gemini-1.5-pro", maxTokens: 8192 }
+        ]
     }
 } as const;
 
@@ -57,16 +66,18 @@ function getClient(config: ModelConfig) {
         case "anthropic":
             return new Anthropic({
                 apiKey: config.apiKey,
-                dangerouslyAllowBrowser: true
             });
         case "groq":
+            // Based on image_1739876676033.png, using OpenAI client with Groq baseURL
             return new OpenAI({
                 apiKey: config.apiKey,
                 baseURL: "https://api.groq.com/v1",
                 dangerouslyAllowBrowser: true
             });
         case "gemini":
-            throw new Error("Gemini support coming soon");
+            // Based on image_1739876758413.png
+            const { GoogleGenerativeAI } = require("@google/generative-ai");
+            return new GoogleGenerativeAI(config.apiKey);
         default:
             throw new Error(`Unsupported provider: ${config.provider}`);
     }
@@ -145,47 +156,66 @@ export async function* streamResponse(
         const modelConfig = MODEL_CONFIGS[config.provider as Provider].models.find(m => m.id === config.model);
         const maxTokens = modelConfig?.maxTokens || 4096;
 
-        if (config.provider === "anthropic") {
-            const stream = await (client as Anthropic).messages.create({
-                model: config.model,
-                max_tokens: Math.min(config.maxTokens, maxTokens),
-                temperature: config.temperature,
-                messages: formatMessages(testCase, modifiedConfig).map(msg => ({
-                    role: msg.role === "system" ? "assistant" : msg.role,
-                    content: msg.content
-                })),
-                stream: true
-            });
+        switch (config.provider) {
+            case "anthropic":
+                const stream = await (client as Anthropic).messages.create({
+                    model: config.model,
+                    max_tokens: Math.min(config.maxTokens, maxTokens),
+                    temperature: config.temperature,
+                    messages: formatMessages(testCase, modifiedConfig).map(msg => ({
+                        role: msg.role === "system" ? "assistant" : msg.role,
+                        content: msg.content
+                    })),
+                    stream: true
+                });
 
-            for await (const chunk of stream) {
-                if (chunk.type === 'content_block_delta' && chunk.delta?.type === 'text') {
-                    const text = chunk.delta.text;
-                    metrics.tokenCount += text.split(/\s+/).length;
-                    metrics.estimatedCost = metrics.tokenCount * 0.00003;
-                    onMetrics?.(metrics);
-                    yield { chunk: text, metrics };
+                for await (const chunk of stream) {
+                    if (chunk.type === 'content_block_delta' && chunk.delta?.type === 'text') {
+                        const text = chunk.delta.text;
+                        metrics.tokenCount += text.split(/\s+/).length;
+                        metrics.estimatedCost = metrics.tokenCount * 0.00003;
+                        onMetrics?.(metrics);
+                        yield { chunk: text, metrics };
+                    }
                 }
-            }
-        } else if (config.provider === "openai" || config.provider === "groq") {
-            const stream = await (client as OpenAI).chat.completions.create({
-                model: config.model,
-                messages: formatMessages(testCase, modifiedConfig),
-                temperature: config.temperature,
-                max_tokens: Math.min(config.maxTokens, maxTokens),
-                stream: true
-            });
+                break;
 
-            for await (const chunk of stream) {
-                const text = chunk.choices[0]?.delta?.content || "";
-                if (text) {
-                    metrics.tokenCount += text.split(/\s+/).length;
-                    metrics.estimatedCost = metrics.tokenCount * (config.provider === "groq" ? 0.000001 : 0.00001);
-                    onMetrics?.(metrics);
-                    yield { chunk: text, metrics };
+            case "groq":
+            case "openai":
+                const openaiStream = await (client as OpenAI).chat.completions.create({
+                    model: config.model,
+                    messages: formatMessages(testCase, modifiedConfig),
+                    temperature: config.temperature,
+                    max_tokens: Math.min(config.maxTokens, maxTokens),
+                    stream: true
+                });
+
+                for await (const chunk of openaiStream) {
+                    const text = chunk.choices[0]?.delta?.content || "";
+                    if (text) {
+                        metrics.tokenCount += text.split(/\s+/).length;
+                        metrics.estimatedCost = metrics.tokenCount * (config.provider === "groq" ? 0.000001 : 0.00001);
+                        onMetrics?.(metrics);
+                        yield { chunk: text, metrics };
+                    }
                 }
-            }
-        } else {
-            throw new Error(`Streaming not supported for provider: ${config.provider}`);
+                break;
+
+            case "gemini":
+                const genAI = client;
+                const model = genAI.getGenerativeModel({ model: config.model });
+                const result = await model.generateContentStream(testCase);
+
+                for await (const chunk of result.stream) {
+                    const text = chunk.text();
+                    if (text) {
+                        metrics.tokenCount += text.split(/\s+/).length;
+                        metrics.estimatedCost = metrics.tokenCount * 0.00001;
+                        onMetrics?.(metrics);
+                        yield { chunk: text, metrics };
+                    }
+                }
+                break;
         }
 
         metrics.endTime = Date.now();
@@ -218,19 +248,19 @@ export async function evaluatePrompt(
     };
 
     const evaluationPrompt = `Evaluate this AI response against the given test case and criteria.
-
+        
 Test Case: "${testCase}"
-
+        
 Response to Evaluate: "${response}"
-
+        
 Rate each criterion from 0 to 1 (where 0 is poor and 1 is excellent):
 ${Object.entries(criteria).map(([criterion]) => `- ${criterion}`).join('\n')}
-
+        
 Provide scores in this exact JSON format:
 {
 ${Object.keys(criteria).map(criterion => `  "${criterion}": 0.85`).join(',\n')}
 }
-
+        
 Your response must be valid JSON containing only the scores.`;
 
     try {
@@ -354,14 +384,14 @@ export async function generateMetaPrompt(
     config: ModelConfig
 ): Promise<string> {
     const prompt = `Given this request for an AI assistant: "${input.baseInput}"
-
+    
 Create a comprehensive meta-prompt that includes:
 1. Extracted AI Role
 2. Appropriate Tone & Style
 3. Core Functionality
 4. Necessary Constraints
 5. Edge Cases to Handle
-
+    
 Format the response as a detailed prompt with clear sections for:
 - Core Behavioral Guidelines
 - Communication Style
@@ -404,9 +434,9 @@ export async function generateVariations(
     config: ModelConfig
 ): Promise<string[]> {
     const prompt = `Generate exactly ${count} detailed variations of the following meta prompt:
-
+    
 ${metaPrompt}
-
+    
 For each variation:
 1. Maintain the core functionality but vary the emphasis and approach
 2. Include clear sections for:
@@ -417,7 +447,7 @@ For each variation:
    - Constraints and Safety Measures
 3. Each variation should be comprehensive and self-contained
 4. Aim for at least 250 words per variation
-
+    
 Return ONLY a JSON object with this exact structure, containing exactly ${count} variations:
 {
   "variations": [
@@ -485,12 +515,12 @@ Base Input: "${baseInput}"
 Meta Prompt: "${metaPrompt}"
 Generated Variations:
 ${variations.map((v, i) => `${i + 1}. ${v}`).join('\n')}
-
+    
 Generate a set of test cases that will effectively evaluate these prompt variations.
 For each test case:
 1. Create a challenging input scenario
 2. Define evaluation criteria with weights (0-1) based on what's important for this specific use case
-
+    
 Return ONLY a JSON object with this structure:
 {
   "testCases": [
