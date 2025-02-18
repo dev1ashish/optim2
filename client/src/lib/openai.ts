@@ -76,9 +76,9 @@ function getClient(config: ModelConfig) {
                 dangerouslyAllowBrowser: true
             });
         case "gemini":
-            // Based on image_1739876758413.png
             const { GoogleGenerativeAI } = require("@google/generative-ai");
-            return new GoogleGenerativeAI(config.apiKey);
+            const genAI = new GoogleGenerativeAI(config.apiKey);
+            return genAI.getGenerativeModel({ model: config.model });
         default:
             throw new Error(`Unsupported provider: ${config.provider}`);
     }

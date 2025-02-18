@@ -1,3 +1,4 @@
+
 import { z } from "zod";
 import type { ModelConfig } from "@/components/settings/model-settings-section";
 
@@ -23,23 +24,16 @@ export const MODEL_CONFIGS = {
   groq: {
     name: "Groq",
     models: [
-      { id: "qwen-2-5-32b", name: "Qwen 2.5 32B", maxTokens: 8192 },
-      { id: "deepseek-r1-distill-qwen-32b", name: "DeepSeek R1 Distill Qwen 32B", maxTokens: 16384 },
-      { id: "deepseek-r1-distill-llama-70b-specdec", name: "DeepSeek R1 Distill LLaMA 70B SpecDec", maxTokens: 16384 },
-      { id: "deepseek-r1-distill-llama-70b", name: "DeepSeek R1 Distill LLaMA 70B", maxTokens: 16384 },
-      { id: "llama-3-3-70b-specdec", name: "LLaMA 3.3 70B SpecDec", maxTokens: 8192 },
-      { id: "llama-3-2-1b-preview", name: "LLaMA 3.2 1B", maxTokens: 128000 },
-      { id: "llama-3-2-3b-preview", name: "LLaMA 3.2 3B", maxTokens: 128000 },
-      { id: "llama-3-2-11b-vision-preview", name: "LLaMA 3.2 11B Vision", maxTokens: 128000 },
-      { id: "llama-3-2-90b-vision-preview", name: "LLaMA 3.2 90B Vision", maxTokens: 128000 },
-      { id: "llama-3-3-70b-versatile", name: "LLaMA 3.3 70B Versatile", maxTokens: 32768 },
-      { id: "llama-3-1-8b-instant", name: "LLaMA 3.1 8B Instant", maxTokens: 8192 },
-      { id: "llama-guard-3-8b", name: "LLaMA Guard 3 8B", maxTokens: 8192 },
-      { id: "llama3-70b-8192", name: "LLaMA3 70B", maxTokens: 8192 },
-      { id: "llama3-8b-8192", name: "LLaMA3 8B", maxTokens: 8192 },
       { id: "mixtral-8x7b-32768", name: "Mixtral 8x7B", maxTokens: 32768 },
-      { id: "distil-whisper-large-v3-en", name: "Distil Whisper Large V3 EN", maxTokens: 4096 },
-      { id: "gemma2-9b-it", name: "Gemma2 9B IT", maxTokens: 8192 }
+      { id: "llama2-70b-4096", name: "LLaMA2 70B", maxTokens: 4096 },
+      { id: "llama2-7b-32768", name: "LLaMA2 7B", maxTokens: 32768 }
+    ]
+  },
+  gemini: {
+    name: "Google",
+    models: [
+      { id: "gemini-pro", name: "Gemini Pro", maxTokens: 32768 },
+      { id: "gemini-pro-vision", name: "Gemini Pro Vision", maxTokens: 32768 }
     ]
   }
 } as const;
