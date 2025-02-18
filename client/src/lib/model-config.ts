@@ -47,14 +47,14 @@ export const MODEL_CONFIGS: Record<Provider, ProviderConfig> = {
   groq: {
     name: "Groq",
     models: [
-      { id: "distil-whisper-large-v3-en", name: "Distil Whisper Large V3", maxTokens: 4096 },
-      { id: "gemma2-7b-it", name: "Gemma2 7B", maxTokens: 8192 },
-      { id: "llama-3-7b-versatile", name: "LLaMA 3 7B Versatile", maxTokens: 8192 },
-      { id: "llama-3-8b-instant", name: "LLaMA 3 8B Instant", maxTokens: 8192 },
-      { id: "llama-guard-1.8b", name: "LLaMA Guard 1.8B", maxTokens: 4096 },
-      { id: "llama1-7nb-8192", name: "LLaMA1 7NB", maxTokens: 8192 },
-      { id: "llama1-8b-8192", name: "LLaMA1 8B", maxTokens: 8192 },
       { id: "mistral-8x7b-32768", name: "Mixtral 8x7B", maxTokens: 32768 },
+      { id: "llama-3-8b-instant", name: "LLaMA 3 8B Instant", maxTokens: 8192 },
+      { id: "llama-3-7b-versatile", name: "LLaMA 3 7B Versatile", maxTokens: 8192 },
+      { id: "gemma2-7b-it", name: "Gemma2 7B", maxTokens: 8192 },
+      { id: "llama1-8b-8192", name: "LLaMA1 8B", maxTokens: 8192 },
+      { id: "llama1-7nb-8192", name: "LLaMA1 7NB", maxTokens: 8192 },
+      { id: "llama-guard-1.8b", name: "LLaMA Guard 1.8B", maxTokens: 4096 },
+      { id: "distil-whisper-large-v3-en", name: "Distil Whisper Large V3", maxTokens: 4096 },
       { id: "whisper-large-v3", name: "Whisper Large V3", maxTokens: 4096 }
     ]
   }

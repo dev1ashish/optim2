@@ -59,8 +59,7 @@ export function TestCreator({
   const form = useForm<TestCase>({
     resolver: zodResolver(testCaseSchema),
     defaultValues: {
-      input: "",
-      criteria: {}
+      input: ""
     }
   });
 
@@ -83,8 +82,7 @@ export function TestCreator({
         const lines = text.split('\n').filter(line => line.trim());
         lines.forEach(line => {
           const testCase: TestCase = {
-            input: line,
-            criteria: {}
+            input: line
           };
           onAddTest(testCase);
         });

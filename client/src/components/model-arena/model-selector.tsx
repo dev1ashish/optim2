@@ -13,20 +13,24 @@ interface ModelSelectorProps {
 }
 
 export function ModelSelector({ onModelConfigsChange }: ModelSelectorProps) {
-  const [selectedProviders, setSelectedProviders] = useState<Record<Provider, boolean>>({} as Record<Provider, boolean>);
-  const [apiKeys, setApiKeys] = useState<Record<Provider, string>>({} as Record<Provider, boolean>);
-  const [selectedModels, setSelectedModels] = useState<Record<Provider, string[]>>({} as Record<Provider, string[]>);
+  const [selectedProviders, setSelectedProviders] = useState<Record<Provider, boolean>>(
+    Object.keys(MODEL_CONFIGS).reduce((acc, key) => ({ ...acc, [key]: false }), {}) as Record<Provider, boolean>
+  );
+  const [apiKeys, setApiKeys] = useState<Record<Provider, string>>(
+    Object.keys(MODEL_CONFIGS).reduce((acc, key) => ({ ...acc, [key]: "" }), {}) as Record<Provider, string>
+  );
+  const [selectedModels, setSelectedModels] = useState<Record<Provider, string[]>>(
+    Object.keys(MODEL_CONFIGS).reduce((acc, key) => ({ ...acc, [key]: [] }), {}) as Record<Provider, string[]>
+  );
 
   const handleProviderToggle = (provider: Provider, checked: boolean) => {
     setSelectedProviders(prev => ({ ...prev, [provider]: checked }));
     if (!checked) {
       const { [provider]: _, ...restApiKeys } = apiKeys;
       const { [provider]: __, ...restModels } = selectedModels;
-      setApiKeys(restApiKeys);
-      setSelectedModels(restModels);
-    } else {
-      setSelectedModels(prev => ({ ...prev, [provider]: [] }));
-    }
+      setApiKeys({ ...restApiKeys, [provider]: "" });
+      setSelectedModels({ ...restModels, [provider]: [] });
+    } 
   };
 
   const handleApiKeyChange = (provider: Provider, key: string) => {
