@@ -181,39 +181,54 @@ export async function* streamResponse(
                 break;
 
             case "groq":
-            case "openai":
-                const openaiStream = await (client as OpenAI).chat.completions.create({
-                    model: config.model,
-                    messages: formatMessages(testCase, modifiedConfig),
-                    temperature: config.temperature,
-                    max_tokens: Math.min(config.maxTokens, maxTokens),
-                    stream: true
-                });
+                try {
+                    const openaiStream = await (client as OpenAI).chat.completions.create({
+                        model: config.model,
+                        messages: formatMessages(testCase, modifiedConfig),
+                        temperature: config.temperature,
+                        max_tokens: Math.min(config.maxTokens, maxTokens),
+                        stream: true
+                    });
 
-                for await (const chunk of openaiStream) {
-                    const text = chunk.choices[0]?.delta?.content || "";
-                    if (text) {
-                        metrics.tokenCount += text.split(/\s+/).length;
-                        metrics.estimatedCost = metrics.tokenCount * (config.provider === "groq" ? 0.000001 : 0.00001);
-                        onMetrics?.(metrics);
-                        yield { chunk: text, metrics };
+                    for await (const chunk of openaiStream) {
+                        const text = chunk.choices[0]?.delta?.content || "";
+                        if (text) {
+                            metrics.tokenCount += text.split(/\s+/).length;
+                            metrics.estimatedCost = metrics.tokenCount * 0.000001;
+                            onMetrics?.(metrics);
+                            yield { chunk: text, metrics };
+                        }
                     }
+                } catch (error) {
+                    console.error("Groq API Error:", error);
+                    throw error;
                 }
                 break;
 
             case "gemini":
-                const genAI = client;
-                const model = genAI.getGenerativeModel({ model: config.model });
-                const result = await model.generateContentStream(testCase);
+                try {
+                    const genAI = client;
+                    const model = genAI.getGenerativeModel({ model: config.model });
+                    const prompt = formatMessages(testCase, modifiedConfig)
+                        .map(msg => msg.content)
+                        .join("\n");
 
-                for await (const chunk of result.stream) {
-                    const text = chunk.text();
-                    if (text) {
-                        metrics.tokenCount += text.split(/\s+/).length;
-                        metrics.estimatedCost = metrics.tokenCount * 0.00001;
-                        onMetrics?.(metrics);
-                        yield { chunk: text, metrics };
+                    const result = await model.generateContentStream({
+                        contents: [{ text: prompt }],
+                    });
+
+                    for await (const chunk of result.stream) {
+                        const text = chunk.text();
+                        if (text) {
+                            metrics.tokenCount += text.split(/\s+/).length;
+                            metrics.estimatedCost = metrics.tokenCount * 0.00001;
+                            onMetrics?.(metrics);
+                            yield { chunk: text, metrics };
+                        }
                     }
+                } catch (error) {
+                    console.error("Gemini API Error:", error);
+                    throw error;
                 }
                 break;
         }
@@ -248,19 +263,19 @@ export async function evaluatePrompt(
     };
 
     const evaluationPrompt = `Evaluate this AI response against the given test case and criteria.
-        
+
 Test Case: "${testCase}"
-        
+
 Response to Evaluate: "${response}"
-        
+
 Rate each criterion from 0 to 1 (where 0 is poor and 1 is excellent):
 ${Object.entries(criteria).map(([criterion]) => `- ${criterion}`).join('\n')}
-        
+
 Provide scores in this exact JSON format:
 {
 ${Object.keys(criteria).map(criterion => `  "${criterion}": 0.85`).join(',\n')}
 }
-        
+
 Your response must be valid JSON containing only the scores.`;
 
     try {
@@ -384,14 +399,14 @@ export async function generateMetaPrompt(
     config: ModelConfig
 ): Promise<string> {
     const prompt = `Given this request for an AI assistant: "${input.baseInput}"
-    
+
 Create a comprehensive meta-prompt that includes:
 1. Extracted AI Role
 2. Appropriate Tone & Style
 3. Core Functionality
 4. Necessary Constraints
 5. Edge Cases to Handle
-    
+
 Format the response as a detailed prompt with clear sections for:
 - Core Behavioral Guidelines
 - Communication Style
@@ -434,9 +449,9 @@ export async function generateVariations(
     config: ModelConfig
 ): Promise<string[]> {
     const prompt = `Generate exactly ${count} detailed variations of the following meta prompt:
-    
+
 ${metaPrompt}
-    
+
 For each variation:
 1. Maintain the core functionality but vary the emphasis and approach
 2. Include clear sections for:
@@ -447,7 +462,7 @@ For each variation:
    - Constraints and Safety Measures
 3. Each variation should be comprehensive and self-contained
 4. Aim for at least 250 words per variation
-    
+
 Return ONLY a JSON object with this exact structure, containing exactly ${count} variations:
 {
   "variations": [
@@ -515,12 +530,12 @@ Base Input: "${baseInput}"
 Meta Prompt: "${metaPrompt}"
 Generated Variations:
 ${variations.map((v, i) => `${i + 1}. ${v}`).join('\n')}
-    
+
 Generate a set of test cases that will effectively evaluate these prompt variations.
 For each test case:
 1. Create a challenging input scenario
 2. Define evaluation criteria with weights (0-1) based on what's important for this specific use case
-    
+
 Return ONLY a JSON object with this structure:
 {
   "testCases": [
