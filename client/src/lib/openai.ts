@@ -4,109 +4,111 @@ import { type MetaPromptInput } from "@shared/schema";
 import type { ModelConfig } from "@/components/settings/model-settings-section";
 import type { Provider } from "@/types";
 
+// the newest Anthropic model is "claude-3-5-sonnet-20241022" which was released October 22, 2024
+// the newest OpenAI model is "gpt-4o" which was released May 13, 2024. do not change this unless explicitly requested by the user
+
 interface ModelConfigItem {
-    id: string;
-    maxTokens: number;
+  id: string;
+  maxTokens: number;
 }
 
 interface ProviderConfig {
-    models: ModelConfigItem[];
+  models: ModelConfigItem[];
 }
 
 const MODEL_CONFIGS = {
-    openai: {
-        models: [
-            { id: "gpt-4o", maxTokens: 8192 },
-            { id: "gpt-4o-mini", maxTokens: 4096 },
-            { id: "gpt-4o-mini-realtime-preview", maxTokens: 4096 },
-            { id: "gpt-4o-realtime-preview", maxTokens: 8192 },
-            { id: "gpt-4o-audio-preview", maxTokens: 4096 }
-        ]
-    },
-    anthropic: {
-        models: [
-            { id: "claude-3-5-sonnet-20241022", maxTokens: 8192 },
-            { id: "claude-3-5-haiku-20241022", maxTokens: 4096 },
-            { id: "claude-3-opus-20240229", maxTokens: 8192 },
-            { id: "claude-3-sonnet-20240229", maxTokens: 8192 },
-            { id: "claude-3-haiku-20240307", maxTokens: 4096 }
-        ]
-    },
-    groq: {
-        models: [
-            { id: "llama-3-70b-8192", maxTokens: 8192 },
-            { id: "llama-3-8b-8192", maxTokens: 4096 },
-            { id: "llama2-70b-4096", maxTokens: 4096 },
-            { id: "llama2-7b-8192", maxTokens: 4096 },
-            { id: "mixtral-8x7b-32768", maxTokens: 32768 }
-        ]
-    },
-    gemini: {
-        models: [
-            { id: "gemini-2.0-flash", maxTokens: 8192 },
-            { id: "gemini-2.0-flash-lite-preview-02-05", maxTokens: 4096 },
-            { id: "gemini-1.5-flash", maxTokens: 4096 },
-            { id: "gemini-1.5-flash-8b", maxTokens: 4096 },
-            { id: "gemini-1.5-pro", maxTokens: 8192 }
-        ]
-    }
+  openai: {
+    models: [
+      { id: "gpt-4o", maxTokens: 8192 },
+      { id: "gpt-4o-mini", maxTokens: 4096 }
+    ]
+  },
+  anthropic: {
+    models: [
+      { id: "claude-3-5-sonnet-20241022", maxTokens: 8192 },
+      { id: "claude-3-5-haiku-20241022", maxTokens: 4096 },
+      { id: "claude-3-opus-20240229", maxTokens: 8192 },
+      { id: "claude-3-sonnet-20240229", maxTokens: 8192 },
+      { id: "claude-3-haiku-20240307", maxTokens: 4096 }
+    ]
+  },
+  groq: {
+    models: [
+      { id: "distil-whisper-large-v3-en", maxTokens: 4096 },
+      { id: "gemma2-7b-it", maxTokens: 8192 },
+      { id: "llama-3-7b-versatile", maxTokens: 8192 },
+      { id: "llama-3-8b-instant", maxTokens: 8192 },
+      { id: "llama-guard-1.8b", maxTokens: 4096 },
+      { id: "llama1-7nb-8192", maxTokens: 8192 },
+      { id: "llama1-8b-8192", maxTokens: 8192 },
+      { id: "mistral-8x7b-32768", maxTokens: 32768 },
+      { id: "whisper-large-v3", maxTokens: 4096 }
+    ]
+  },
+  gemini: {
+    models: [
+      { id: "gemini-2.0-flash", maxTokens: 8192 },
+      { id: "gemini-2.0-flash-lite-preview-02-05", maxTokens: 4096 },
+      { id: "gemini-1.5-flash", maxTokens: 4096 },
+      { id: "gemini-1.5-flash-8b", maxTokens: 4096 },
+      { id: "gemini-1.5-pro", maxTokens: 8192 }
+    ]
+  }
 } as const;
 
 function getClient(config: ModelConfig) {
-    if (!config.apiKey) {
-        throw new Error("API key is required. Please set it in the model settings.");
-    }
+  if (!config.apiKey) {
+    throw new Error("API key is required. Please set it in the model settings.");
+  }
 
-    switch (config.provider) {
-        case "openai":
-            return new OpenAI({
-                apiKey: config.apiKey,
-                dangerouslyAllowBrowser: true
-            });
-        case "anthropic":
-            return new Anthropic({
-                apiKey: config.apiKey,
-                baseURL: "https://api.anthropic.com/v1"
-            });
-        case "groq":
-            // Based on image_1739876676033.png, using OpenAI client with Groq baseURL
-            return new OpenAI({
-                apiKey: config.apiKey,
-                baseURL: "https://api.groq.com/openai/v1",
-                dangerouslyAllowBrowser: true
-            });
-        case "gemini":
-            // Based on image_1739876758413.png
-            const { GoogleGenerativeAI } = require("@google/generative-ai");
-            return new GoogleGenerativeAI(config.apiKey);
-        default:
-            throw new Error(`Unsupported provider: ${config.provider}`);
-    }
+  switch (config.provider) {
+    case "openai":
+      return new OpenAI({
+        apiKey: config.apiKey,
+        dangerouslyAllowBrowser: true
+      });
+    case "anthropic":
+      return new Anthropic({
+        apiKey: config.apiKey,
+        baseURL: "https://api.anthropic.com/v1"
+      });
+    case "groq":
+      return new OpenAI({
+        apiKey: config.apiKey,
+        baseURL: "https://api.groq.com/openai/v1",
+        dangerouslyAllowBrowser: true
+      });
+    case "gemini":
+      const { GoogleGenerativeAI } = require("@google/generative-ai");
+      return new GoogleGenerativeAI(config.apiKey);
+    default:
+      throw new Error(`Unsupported provider: ${config.provider}`);
+  }
 }
 
 function formatMessages(prompt: string, config: ModelConfig) {
-    const messages = [];
+  const messages = [];
 
-    if (config.systemPrompt) {
-        if (config.provider === "anthropic") {
-            messages.push({
-                role: "assistant" as const,
-                content: config.systemPrompt
-            });
-        } else {
-            messages.push({
-                role: "system" as const,
-                content: config.systemPrompt
-            });
-        }
+  if (config.systemPrompt) {
+    if (config.provider === "anthropic") {
+      messages.push({
+        role: "assistant" as const,
+        content: config.systemPrompt
+      });
+    } else {
+      messages.push({
+        role: "system" as const,
+        content: config.systemPrompt
+      });
     }
+  }
 
-    messages.push({
-        role: "user" as const,
-        content: prompt
-    });
+  messages.push({
+    role: "user" as const,
+    content: prompt
+  });
 
-    return messages;
+  return messages;
 }
 
 function handleApiError(error: any) {
