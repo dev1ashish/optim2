@@ -16,6 +16,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { AlertCircle, Loader2 } from "lucide-react";
+import { PromptFlow } from "@/components/prompt-flow";
+import 'reactflow/dist/style.css';
 
 interface ProcessResult {
   metaPrompt: string;
@@ -142,71 +144,8 @@ export default function Home() {
           </Card>
         )}
 
-        {result && (
-          <div className="space-y-8">
-            {/* Meta Prompt */}
-            <Card className="p-6">
-              <Label className="text-lg block mb-4">Generated Meta Prompt</Label>
-              <ScrollArea className="h-[200px] rounded-md border p-4">
-                <div className="whitespace-pre-wrap">{result.metaPrompt}</div>
-              </ScrollArea>
-            </Card>
-
-            {/* Variations */}
-            <Card className="p-6">
-              <Label className="text-lg block mb-4">Generated Variations</Label>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                {result.variations.map((variation, index) => (
-                  <Card key={index} className="p-4">
-                    <Label className="text-sm font-medium mb-2 block">Variation {index + 1}</Label>
-                    <ScrollArea className="h-[300px]">
-                      <div className="whitespace-pre-wrap">{variation}</div>
-                    </ScrollArea>
-                  </Card>
-                ))}
-              </div>
-            </Card>
-
-            {/* Evaluation Results */}
-            <Card className="p-6">
-              <Label className="text-lg block mb-4">Evaluation Results</Label>
-              <div className="overflow-x-auto">
-                <table className="w-full border-collapse">
-                  <thead>
-                    <tr>
-                      <th className="text-left p-2 border">Variation</th>
-                      {DEFAULT_EVALUATION_CRITERIA.map(criterion => (
-                        <th key={criterion.id} className="text-left p-2 border">
-                          {criterion.name}
-                        </th>
-                      ))}
-                      <th className="text-left p-2 border">Average Score</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {result.evaluations.map(({ variationIndex, scores }) => {
-                      const avgScore = scores.reduce((sum, s) => sum + s.score, 0) / scores.length;
-                      return (
-                        <tr key={variationIndex}>
-                          <td className="p-2 border">Variation {variationIndex + 1}</td>
-                          {DEFAULT_EVALUATION_CRITERIA.map(criterion => {
-                            const score = scores.find(s => s.criterionId === criterion.id);
-                            return (
-                              <td key={criterion.id} className="p-2 border">
-                                {score ? `${(score.score * 100).toFixed(1)}%` : 'N/A'}
-                              </td>
-                            );
-                          })}
-                          <td className="p-2 border">{(avgScore * 100).toFixed(1)}%</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </Card>
-          </div>
-        )}
+        {/* Flow View */}
+        {result && <PromptFlow result={result} />}
       </div>
     </div>
   );
