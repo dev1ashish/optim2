@@ -22,14 +22,26 @@ export interface GlobalSettings {
 interface GlobalSettingsProps {
   settings: GlobalSettings;
   onSettingsChange: (settings: GlobalSettings) => void;
+  isOpen?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }
 
-export function GlobalSettings({ settings, onSettingsChange }: GlobalSettingsProps) {
-  const [open, setOpen] = useState(false);
+export function GlobalSettings({ 
+  settings, 
+  onSettingsChange,
+  isOpen,
+  onOpenChange 
+}: GlobalSettingsProps) {
+  const [open, setOpen] = useState(isOpen || false);
   const [openaiKey, setOpenaiKey] = useState(settings.openaiKey || "");
   const [anthropicKey, setAnthropicKey] = useState(settings.anthropicKey || "");
   const [groqKey, setGroqKey] = useState(settings.groqKey || "");
   const { toast } = useToast();
+
+  const handleOpenChange = (newOpen: boolean) => {
+    setOpen(newOpen);
+    onOpenChange?.(newOpen);
+  };
 
   const handleSave = () => {
     if (!openaiKey) {
@@ -46,8 +58,8 @@ export function GlobalSettings({ settings, onSettingsChange }: GlobalSettingsPro
       anthropicKey,
       groqKey
     });
-    
-    setOpen(false);
+
+    handleOpenChange(false);
     toast({
       title: "Settings Saved",
       description: "Your API keys have been updated."
@@ -55,7 +67,7 @@ export function GlobalSettings({ settings, onSettingsChange }: GlobalSettingsPro
   };
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
+    <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
         <Button variant="outline" size="icon" className="fixed top-4 right-4">
           <Settings2 className="h-4 w-4" />
@@ -63,9 +75,9 @@ export function GlobalSettings({ settings, onSettingsChange }: GlobalSettingsPro
       </DialogTrigger>
       <DialogContent className="sm:max-w-[425px]">
         <DialogHeader>
-          <DialogTitle>Global Settings</DialogTitle>
+          <DialogTitle>API Settings</DialogTitle>
           <DialogDescription>
-            Configure your API keys for different providers. OpenAI (GPT-4) is required for the main pipeline.
+            Configure your API keys. OpenAI (GPT-4) is required for the main pipeline.
           </DialogDescription>
         </DialogHeader>
         <div className="grid gap-4 py-4">
