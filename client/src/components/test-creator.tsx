@@ -23,8 +23,17 @@ import {
 } from "@/components/ui/dialog";
 import { Settings2, Upload, Trash2, Edit2 } from "lucide-react";
 import { Form, FormControl, FormField, FormItem, FormMessage } from "@/components/ui/form";
-import { testCaseSchema, type TestCase } from "@shared/schema";
-import { ModelSettingsSection, type ModelConfig } from "@/components/settings/model-settings-section";
+import { ModelSettingsSection } from "@/components/settings/model-settings-section";
+import type { ModelConfig } from "@/types/model";
+import { z } from "zod";
+
+// Define schema for test cases including criteria
+const testCaseSchema = z.object({
+  input: z.string().min(1, "Test input is required"),
+  criteria: z.record(z.number().min(0).max(1)).default({})
+});
+
+type TestCase = z.infer<typeof testCaseSchema>;
 
 interface TestCreatorProps {
   onAddTest: (test: TestCase) => void;
@@ -94,14 +103,15 @@ export function TestCreator({
   };
 
   return (
-    <Card className="p-6 space-y-6">
+    <Card className="p-6 space-y-6 bg-card">
       <div className="flex justify-between items-center">
-        <Label className="text-lg">Test Cases</Label>
+        <Label className="text-lg font-semibold">Test Cases</Label>
         <div className="flex gap-2">
           <Button
             variant="outline"
             onClick={() => onGenerateTests()}
             disabled={isGenerating}
+            className="hover:bg-primary/20"
           >
             {isGenerating ? "Generating..." : "Generate Test Cases"}
           </Button>
@@ -116,6 +126,7 @@ export function TestCreator({
             <Button
               variant="outline"
               onClick={() => document.getElementById('file-upload')?.click()}
+              className="hover:bg-primary/20"
             >
               <Upload className="h-4 w-4 mr-2" />
               Upload Test Cases
@@ -123,7 +134,7 @@ export function TestCreator({
           </div>
           <Dialog open={showSettings} onOpenChange={setShowSettings}>
             <DialogTrigger asChild>
-              <Button variant="outline" size="icon">
+              <Button variant="outline" size="icon" className="hover:bg-primary/20">
                 <Settings2 className="h-4 w-4" />
               </Button>
             </DialogTrigger>
@@ -157,6 +168,7 @@ export function TestCreator({
                   <Textarea
                     {...field}
                     placeholder="Enter a test case..."
+                    className="bg-background"
                   />
                 </FormControl>
                 <FormMessage />
@@ -164,26 +176,25 @@ export function TestCreator({
             )}
           />
 
-          <Button type="submit">
+          <Button type="submit" className="bg-primary text-primary-foreground hover:bg-primary/90">
             {editingIndex !== null ? "Update Test Case" : "Add Test Case"}
           </Button>
         </form>
       </Form>
 
       {testCases.length > 0 && (
-        <div>
-          <Label className="mb-4">Test Cases</Label>
+        <div className="rounded-lg border bg-card">
           <Table>
             <TableHeader>
               <TableRow>
                 <TableHead>Test Input</TableHead>
-                <TableHead>Actions</TableHead>
+                <TableHead className="w-[100px]">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {testCases.map((test, index) => (
                 <TableRow key={index}>
-                  <TableCell>{test.input}</TableCell>
+                  <TableCell className="font-mono">{test.input}</TableCell>
                   <TableCell>
                     <div className="flex gap-2">
                       <Button
@@ -193,6 +204,7 @@ export function TestCreator({
                           form.reset(test);
                           setEditingIndex(index);
                         }}
+                        className="hover:bg-primary/20"
                       >
                         <Edit2 className="h-4 w-4" />
                       </Button>
@@ -200,6 +212,7 @@ export function TestCreator({
                         variant="ghost"
                         size="icon"
                         onClick={() => onRemoveTest(index)}
+                        className="hover:bg-primary/20"
                       >
                         <Trash2 className="h-4 w-4" />
                       </Button>
