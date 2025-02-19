@@ -1,7 +1,7 @@
-import ReactFlow, { 
-  Handle, 
-  Position, 
-  Background, 
+import ReactFlow, {
+  Handle,
+  Position,
+  Background,
   Controls,
   MarkerType,
   useReactFlow
@@ -113,10 +113,10 @@ const LeaderboardNode = memo(({ data }: { data: { evaluations: ProcessResult['ev
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Rank</TableHead>
-              <TableHead>Variation</TableHead>
-              <TableHead className="text-center">Detailed Scores</TableHead>
-              <TableHead>Weighted Avg</TableHead>
+              <TableHead className="w-20">Rank</TableHead>
+              <TableHead className="w-32">Variation</TableHead>
+              <TableHead>Scores</TableHead>
+              <TableHead className="w-24 text-right">Average</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -124,7 +124,7 @@ const LeaderboardNode = memo(({ data }: { data: { evaluations: ProcessResult['ev
               .map(({ variationIndex, scores }) => ({
                 variationIndex,
                 scores,
-                avgScore: scores.reduce((sum, s) => sum + s.score, 0) / scores.length
+                avgScore: scores.reduce((sum, s) => sum + (s.score || 0), 0) / scores.length || 0
               }))
               .sort((a, b) => b.avgScore - a.avgScore)
               .map((result, rank) => (
@@ -132,12 +132,18 @@ const LeaderboardNode = memo(({ data }: { data: { evaluations: ProcessResult['ev
                   <TableCell className="font-medium">#{rank + 1}</TableCell>
                   <TableCell>Variation {result.variationIndex + 1}</TableCell>
                   <TableCell>
-                    <div className="flex flex-col space-y-2 text-sm">
+                    <div className="space-y-2">
                       {result.scores.map(score => (
                         <div key={score.criterionId} className="space-y-1">
-                          <div className="flex justify-between font-medium">
-                            <span>{score.criterionId}:</span>
+                          <div className="flex items-center justify-between text-sm">
+                            <span className="font-medium">{score.criterionId}:</span>
                             <span>{Math.round(score.score * 10)}/10</span>
+                          </div>
+                          <div className="w-full bg-secondary h-2 rounded-full overflow-hidden">
+                            <div 
+                              className="h-full bg-primary transition-all duration-300"
+                              style={{ width: `${Math.round(score.score * 100)}%` }}
+                            />
                           </div>
                           <div className="text-xs text-muted-foreground">
                             {score.explanation}
@@ -146,7 +152,7 @@ const LeaderboardNode = memo(({ data }: { data: { evaluations: ProcessResult['ev
                       ))}
                     </div>
                   </TableCell>
-                  <TableCell className="font-medium">
+                  <TableCell className="text-right font-medium">
                     {(result.avgScore * 10).toFixed(1)}/10
                   </TableCell>
                 </TableRow>

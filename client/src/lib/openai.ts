@@ -33,24 +33,6 @@ export const DEFAULT_EVALUATION_CRITERIA = [
     name: "Conciseness", 
     description: "Is the response optimally concise without sacrificing clarity?",
     defaultWeight: 0.7
-  },
-  {
-    id: "diversity",
-    name: "Response Diversity",
-    description: "How varied and comprehensive are the different aspects covered?",
-    defaultWeight: 0.8
-  },
-  {
-    id: "bias",
-    name: "Bias Detection",
-    description: "Are there any unintended biases or assumptions in the response?",
-    defaultWeight: 0.9
-  },
-  {
-    id: "readability",
-    name: "Readability",
-    description: "How accessible and clear is the language for the target audience?",
-    defaultWeight: 0.8
   }
 ];
 
@@ -226,19 +208,13 @@ Evaluate this variation using these criteria on a scale of 1-10, where:
 
 ${DEFAULT_EVALUATION_CRITERIA.map(c => `- ${c.name} (Weight: ${weights[c.id]}): ${c.description}`).join('\n')}
 
-Additional Analysis Required:
-1. Diversity Check: Analyze the variation for coverage of different perspectives and approaches
-2. Bias Detection: Identify any potential biases or problematic assumptions
-3. Readability Analysis: Assess the clarity and accessibility of the language
-4. Hallucination Risk: Evaluate the potential for generating false or misleading information
-
 Return a JSON object in this exact format:
 {
   "evaluations": [
     {
       "criterionId": "criterion-id",
       "score": [score between 0.0-1.0, divide your 1-10 score by 10],
-      "explanation": "Detailed explanation of the score with specific examples and suggestions for improvement"
+      "explanation": "Detailed explanation of the score"
     }
   ]
 }
@@ -265,15 +241,22 @@ Be extremely critical in your evaluation. Do not be lenient - if there are issue
     try {
       const content = response.choices[0].message.content || "{}";
       const result = JSON.parse(content);
+
       if (!Array.isArray(result.evaluations)) {
         throw new Error("Invalid evaluation format");
       }
 
-      // Apply weights to scores
-      const weightedScores = result.evaluations.map((evaluation) => ({
-        ...evaluation,
-        score: evaluation.score * weights[evaluation.criterionId]
-      }));
+      // Validate and normalize scores
+      const weightedScores = result.evaluations
+        .filter(evaluation => weights[evaluation.criterionId] !== undefined)
+        .map((evaluation) => ({
+          ...evaluation,
+          score: Number(evaluation.score) * (weights[evaluation.criterionId] || 1.0)
+        }));
+
+      if (weightedScores.length === 0) {
+        throw new Error("No valid scores found");
+      }
 
       results.push({
         variationIndex: i,
