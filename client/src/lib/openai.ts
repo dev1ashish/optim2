@@ -2,12 +2,33 @@ import OpenAI from "openai";
 import type { MetaPromptInput } from "@shared/schema";
 import type { Provider } from "@/types";
 
-// Default evaluation criteria
+// Updated evaluation criteria
 export const DEFAULT_EVALUATION_CRITERIA = [
-  { id: "clarity", name: "Clarity", description: "How clear and understandable is the prompt?" },
-  { id: "relevance", name: "Relevance", description: "How relevant is the prompt to the original request?" },
-  { id: "accuracy", name: "Accuracy", description: "How accurate and precise are the instructions?" },
-  { id: "completeness", name: "Completeness", description: "How comprehensive is the prompt in covering all aspects?" }
+  { 
+    id: "relevance", 
+    name: "Relevance", 
+    description: "How well does the output align with the original user prompt?" 
+  },
+  { 
+    id: "coherence", 
+    name: "Coherence", 
+    description: "Is the response logically structured and fluent?" 
+  },
+  { 
+    id: "creativity", 
+    name: "Creativity", 
+    description: "Does the response show uniqueness and innovation?" 
+  },
+  { 
+    id: "accuracy", 
+    name: "Accuracy", 
+    description: "For fact-based prompts, does the output contain correct information?" 
+  },
+  { 
+    id: "conciseness", 
+    name: "Conciseness", 
+    description: "Is the response to the point without unnecessary verbosity?" 
+  }
 ];
 
 export interface ModelConfigItem {
@@ -139,15 +160,16 @@ export async function evaluateVariations(
 
   const results = [];
 
+  // Generate 5 test responses for each variation
   for (let i = 0; i < variations.length; i++) {
-    const prompt = `Evaluate the following prompt variation against the original request.
+    const prompt = `Evaluate the following prompt variation carefully.
 
 Original Request: "${originalRequest}"
 
 Prompt Variation:
 ${variations[i]}
 
-Evaluate this variation using the following criteria:
+Evaluate this variation using the following criteria on a scale of 1-10:
 ${DEFAULT_EVALUATION_CRITERIA.map(c => `- ${c.name}: ${c.description}`).join('\n')}
 
 Return a JSON object in this exact format:
@@ -155,18 +177,23 @@ Return a JSON object in this exact format:
   "evaluations": [
     {
       "criterionId": "criterion-id",
-      "score": 0.0-1.0,
+      "score": [score between 0.0-1.0, divide your 1-10 score by 10],
       "explanation": "Brief explanation of the score"
     }
   ]
-}`;
+}
+
+Provide detailed explanations for each score, considering:
+1. How well the prompt achieves its intended purpose
+2. Potential improvements or shortcomings
+3. Specific strengths in each criterion`;
 
     const response = await openai.chat.completions.create({
       model: DEFAULT_MODEL_CONFIG.model,
       messages: [
         {
           role: "system",
-          content: "You are an objective evaluator. Always respond with valid JSON containing an 'evaluations' array."
+          content: "You are an expert prompt evaluator. Provide thorough, unbiased assessments of prompt quality across multiple criteria."
         },
         {
           role: "user",

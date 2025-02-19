@@ -3,7 +3,8 @@ import ReactFlow, {
   Position, 
   Background, 
   Controls,
-  MarkerType
+  MarkerType,
+  useReactFlow
 } from 'reactflow';
 import { Card } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
@@ -20,6 +21,7 @@ import {
 } from "@/components/ui/table";
 import { Loader2 } from "lucide-react";
 import type { EvaluationScore } from "@/lib/openai";
+import { memo } from 'react';
 
 interface ProcessResult {
   metaPrompt: string;
@@ -39,7 +41,8 @@ interface InputNodeProps {
   };
 }
 
-const InputNode = ({ data }: InputNodeProps) => (
+// Memoize the nodes to prevent unnecessary re-renders
+const InputNode = memo(({ data }: InputNodeProps) => (
   <div className="w-[400px]">
     <Handle type="source" position={Position.Bottom} />
     <Card className="p-4">
@@ -68,9 +71,9 @@ const InputNode = ({ data }: InputNodeProps) => (
       </div>
     </Card>
   </div>
-);
+));
 
-const MetaPromptNode = ({ data }: { data: { content: string } }) => (
+const MetaPromptNode = memo(({ data }: { data: { content: string } }) => (
   <div className="w-[400px]">
     <Handle type="target" position={Position.Top} />
     <Card className="p-4">
@@ -81,9 +84,9 @@ const MetaPromptNode = ({ data }: { data: { content: string } }) => (
     </Card>
     <Handle type="source" position={Position.Bottom} />
   </div>
-);
+));
 
-const VariationsNode = ({ data }: { data: { variations: string[] } }) => (
+const VariationsNode = memo(({ data }: { data: { variations: string[] } }) => (
   <div className="w-[800px]">
     <Handle type="target" position={Position.Top} />
     <Card className="p-4">
@@ -99,9 +102,9 @@ const VariationsNode = ({ data }: { data: { variations: string[] } }) => (
     </Card>
     <Handle type="source" position={Position.Bottom} />
   </div>
-);
+));
 
-const LeaderboardNode = ({ data }: { data: { evaluations: ProcessResult['evaluations'] } }) => (
+const LeaderboardNode = memo(({ data }: { data: { evaluations: ProcessResult['evaluations'] } }) => (
   <div className="w-[600px]">
     <Handle type="target" position={Position.Top} />
     <Card className="p-4">
@@ -112,26 +115,33 @@ const LeaderboardNode = ({ data }: { data: { evaluations: ProcessResult['evaluat
             <TableRow>
               <TableHead>Rank</TableHead>
               <TableHead>Variation</TableHead>
-              <TableHead>Average Score</TableHead>
-              <TableHead>Top Criterion</TableHead>
+              <TableHead className="text-center">Scores</TableHead>
+              <TableHead>Average</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {data.evaluations
               .map(({ variationIndex, scores }) => ({
                 variationIndex,
-                avgScore: scores.reduce((sum, s) => sum + s.score, 0) / scores.length,
-                topCriterion: scores.reduce((prev, curr) => 
-                  curr.score > prev.score ? curr : prev
-                )
+                scores,
+                avgScore: scores.reduce((sum, s) => sum + s.score, 0) / scores.length
               }))
               .sort((a, b) => b.avgScore - a.avgScore)
               .map((result, rank) => (
                 <TableRow key={result.variationIndex}>
-                  <TableCell>#{rank + 1}</TableCell>
+                  <TableCell className="font-medium">#{rank + 1}</TableCell>
                   <TableCell>Variation {result.variationIndex + 1}</TableCell>
-                  <TableCell>{(result.avgScore * 100).toFixed(1)}%</TableCell>
-                  <TableCell className="text-sm">{result.topCriterion.explanation}</TableCell>
+                  <TableCell>
+                    <div className="flex flex-col space-y-1 text-sm">
+                      {result.scores.map(score => (
+                        <div key={score.criterionId} className="flex justify-between">
+                          <span>{score.criterionId}:</span>
+                          <span>{Math.round(score.score * 10)}/10</span>
+                        </div>
+                      ))}
+                    </div>
+                  </TableCell>
+                  <TableCell>{(result.avgScore * 10).toFixed(1)}/10</TableCell>
                 </TableRow>
               ))}
           </TableBody>
@@ -139,7 +149,15 @@ const LeaderboardNode = ({ data }: { data: { evaluations: ProcessResult['evaluat
       </div>
     </Card>
   </div>
-);
+));
+
+// Memoize the node types
+const nodeTypes = {
+  input: InputNode,
+  metaPrompt: MetaPromptNode,
+  variations: VariationsNode,
+  leaderboard: LeaderboardNode
+};
 
 interface PromptFlowProps {
   input: string;
@@ -207,13 +225,6 @@ export function PromptFlow({ input, onInputChange, onGenerate, isGenerating, res
       style: { stroke: '#999' }
     }
   ] : [];
-
-  const nodeTypes = {
-    input: InputNode,
-    metaPrompt: MetaPromptNode,
-    variations: VariationsNode,
-    leaderboard: LeaderboardNode
-  };
 
   return (
     <div className="h-[800px] w-full border rounded-lg">
