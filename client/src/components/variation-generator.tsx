@@ -10,30 +10,19 @@ import {
 } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { ModelSettingsSection, type ModelConfig } from "@/components/settings/model-settings-section";
 
 interface VariationGeneratorProps {
   metaPrompt: string;
   onGenerate: (count: number) => void;
   variations: string[];
   isLoading?: boolean;
-  modelConfig: ModelConfig;
-  onModelConfigChange: (config: ModelConfig) => void;
-  defaultConfig: ModelConfig;
-  useDefaultSettings: boolean;
-  onUseDefaultSettingsChange: (use: boolean) => void;
 }
 
 export function VariationGenerator({
   metaPrompt,
   onGenerate,
   variations,
-  isLoading,
-  modelConfig,
-  onModelConfigChange,
-  defaultConfig,
-  useDefaultSettings,
-  onUseDefaultSettingsChange
+  isLoading
 }: VariationGeneratorProps) {
   const [count, setCount] = useState("3");
 
@@ -41,15 +30,6 @@ export function VariationGenerator({
     <Card className="p-6 space-y-6">
       <div className="flex justify-between items-center">
         <Label className="text-lg">Generate Variations</Label>
-        <ModelSettingsSection
-          title="Variation Generation Settings"
-          description="Configure the model for generating prompt variations"
-          config={modelConfig}
-          onChange={onModelConfigChange}
-          defaultConfig={defaultConfig}
-          useDefaultSettings={useDefaultSettings}
-          onUseDefaultSettingsChange={onUseDefaultSettingsChange}
-        />
       </div>
 
       <div>

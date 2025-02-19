@@ -4,12 +4,12 @@ import type { MetaPromptInput } from "@shared/schema";
 import type { ModelConfig } from "@/components/settings/model-settings-section";
 import type { Provider } from "@/types";
 
-interface ModelConfigItem {
+export interface ModelConfigItem {
     id: string;
     maxTokens: number;
 }
 
-interface ProviderConfig {
+export interface ProviderConfig {
     models: ModelConfigItem[];
 }
 
@@ -18,27 +18,17 @@ const MODEL_CONFIGS = {
     openai: {
         models: [
             { id: "gpt-4o", maxTokens: 8192 },
-            { id: "gpt-4o-mini", maxTokens: 4096 },
-            { id: "gpt-4o-mini-realtime-preview", maxTokens: 4096 },
-            { id: "gpt-4o-realtime-preview", maxTokens: 8192 },
-            { id: "gpt-4o-audio-preview", maxTokens: 4096 }
+            { id: "gpt-4o-mini", maxTokens: 4096 }
         ]
     },
     anthropic: {
         models: [
             { id: "claude-3-5-sonnet-20241022", maxTokens: 8192 },
-            { id: "claude-3-5-haiku-20241022", maxTokens: 4096 },
-            { id: "claude-3-opus-20240229", maxTokens: 8192 },
-            { id: "claude-3-sonnet-20240229", maxTokens: 8192 },
-            { id: "claude-3-haiku-20240307", maxTokens: 4096 }
+            { id: "claude-3-5-haiku-20241022", maxTokens: 4096 }
         ]
     },
     groq: {
         models: [
-            { id: "llama-3-70b-8192", maxTokens: 8192 },
-            { id: "llama-3-8b-8192", maxTokens: 4096 },
-            { id: "llama2-70b-4096", maxTokens: 4096 },
-            { id: "llama2-7b-8192", maxTokens: 4096 },
             { id: "mixtral-8x7b-32768", maxTokens: 32768 }
         ]
     }
@@ -66,8 +56,6 @@ function getClient(config: ModelConfig) {
                 baseURL: "https://api.groq.com/openai/v1",
                 dangerouslyAllowBrowser: true
             });
-        case "gemini":
-            throw new Error("Gemini support coming soon");
         default:
             throw new Error(`Unsupported provider: ${config.provider}`);
     }
@@ -145,7 +133,7 @@ export async function* streamResponse(
             systemPrompt: prompt
         };
 
-        const modelConfig = MODEL_CONFIGS[config.provider as Provider].models.find(m => m.id === config.model);
+        const modelConfig = getModelConfig(config.provider, config.model);
         const maxTokens = modelConfig?.maxTokens || 4096;
 
         if (config.provider === "anthropic") {
@@ -518,6 +506,12 @@ Return ONLY a JSON object with this structure:
     }
 }
 
+function getModelConfig(provider: Provider, modelId: string): ModelConfigItem | undefined {
+    const providerConfig = MODEL_CONFIGS[provider];
+    if (!providerConfig) return undefined;
+    return providerConfig.models.find(m => m.id === modelId);
+}
+
 export async function generateResponse(
     prompt: string,
     testCase: string,
@@ -540,7 +534,11 @@ export async function generateResponse(
                     content: msg.content
                 }))
             });
-            return response.content[0].text || "";
+            const content = response.content[0];
+            if (content.type === 'text') {
+                return content.text;
+            }
+            return '';
         } else {
             const response = await (client as OpenAI).chat.completions.create({
                 model: config.model,

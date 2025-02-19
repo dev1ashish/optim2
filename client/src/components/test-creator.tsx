@@ -14,17 +14,8 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
-import { Settings2, Upload, Trash2, Edit2 } from "lucide-react";
 import { Form, FormControl, FormField, FormItem, FormMessage } from "@/components/ui/form";
-import { ModelSettingsSection } from "@/components/settings/model-settings-section";
-import type { ModelConfig } from "@/types/model";
+import { Upload, Trash2, Edit2 } from "lucide-react";
 import { z } from "zod";
 
 // Define schema for test cases including criteria
@@ -41,11 +32,6 @@ interface TestCreatorProps {
   testCases: TestCase[];
   onRemoveTest: (index: number) => void;
   onUpdateTest: (index: number, test: TestCase) => void;
-  modelConfig: ModelConfig;
-  onModelConfigChange: (config: ModelConfig) => void;
-  defaultConfig: ModelConfig;
-  useDefaultSettings: boolean;
-  onUseDefaultSettingsChange: (use: boolean) => void;
   isGenerating: boolean;
 }
 
@@ -55,14 +41,8 @@ export function TestCreator({
   testCases,
   onRemoveTest,
   onUpdateTest,
-  modelConfig,
-  onModelConfigChange,
-  defaultConfig,
-  useDefaultSettings,
-  onUseDefaultSettingsChange,
   isGenerating
 }: TestCreatorProps) {
-  const [showSettings, setShowSettings] = useState(false);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
 
   const form = useForm<TestCase>({
@@ -132,27 +112,6 @@ export function TestCreator({
               Upload Test Cases
             </Button>
           </div>
-          <Dialog open={showSettings} onOpenChange={setShowSettings}>
-            <DialogTrigger asChild>
-              <Button variant="outline" size="icon" className="hover:bg-primary/20">
-                <Settings2 className="h-4 w-4" />
-              </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Test Generation Settings</DialogTitle>
-              </DialogHeader>
-              <ModelSettingsSection
-                title="Test Generation Settings"
-                description="Configure the model for generating test cases"
-                config={modelConfig}
-                onChange={onModelConfigChange}
-                defaultConfig={defaultConfig}
-                useDefaultSettings={useDefaultSettings}
-                onUseDefaultSettingsChange={onUseDefaultSettingsChange}
-              />
-            </DialogContent>
-          </Dialog>
         </div>
       </div>
 

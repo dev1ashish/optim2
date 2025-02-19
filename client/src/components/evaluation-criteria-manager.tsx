@@ -23,15 +23,13 @@ import {
 } from "@/components/ui/table";
 import { Form, FormControl, FormField, FormItem, FormMessage } from "@/components/ui/form";
 import { evaluationCriterionSchema, type EvaluationCriterion } from "@shared/schema";
-import { ModelSettingsSection, type ModelConfig } from "@/components/settings/model-settings-section";
-import { Settings2, Plus, Trash2, Edit2 } from "lucide-react";
+import { Plus, Trash2, Edit2 } from "lucide-react";
 
 interface EvaluationCriteriaManagerProps {
   criteria: EvaluationCriterion[];
   onAddCriterion: (criterion: EvaluationCriterion) => void;
   onUpdateCriterion: (id: string, criterion: EvaluationCriterion) => void;
   onRemoveCriterion: (id: string) => void;
-  defaultModelConfig: ModelConfig;
 }
 
 export function EvaluationCriteriaManager({
@@ -39,7 +37,6 @@ export function EvaluationCriteriaManager({
   onAddCriterion,
   onUpdateCriterion,
   onRemoveCriterion,
-  defaultModelConfig
 }: EvaluationCriteriaManagerProps) {
   const [showForm, setShowForm] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -52,7 +49,6 @@ export function EvaluationCriteriaManager({
       description: "",
       systemPrompt: "",
       weight: 1,
-      modelConfig: defaultModelConfig
     }
   });
 
@@ -159,30 +155,6 @@ export function EvaluationCriteriaManager({
                       />
                     </FormControl>
                     <FormMessage />
-                  </FormItem>
-                )}
-              />
-
-              <FormField
-                control={form.control}
-                name="modelConfig"
-                render={({ field }) => (
-                  <FormItem>
-                    <ModelSettingsSection
-                      title="Model Settings"
-                      description="Configure the model for this evaluation criterion"
-                      config={field.value || defaultModelConfig}
-                      onChange={field.onChange}
-                      defaultConfig={defaultModelConfig}
-                      useDefaultSettings={!field.value}
-                      onUseDefaultSettingsChange={(use) => {
-                        if (use) {
-                          field.onChange(undefined);
-                        } else {
-                          field.onChange(defaultModelConfig);
-                        }
-                      }}
-                    />
                   </FormItem>
                 )}
               />

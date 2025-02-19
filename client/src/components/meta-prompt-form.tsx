@@ -11,22 +11,14 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { ModelSettingsSection, type ModelConfig } from "@/components/settings/model-settings-section";
 import { Label } from "@/components/ui/label";
 
 interface MetaPromptFormProps {
   onSubmit: (data: MetaPromptInput) => void;
-  modelConfig: ModelConfig;
-  onModelConfigChange: (config: ModelConfig) => void;
   isLoading?: boolean;
 }
 
-export function MetaPromptForm({ 
-  onSubmit, 
-  modelConfig, 
-  onModelConfigChange,
-  isLoading 
-}: MetaPromptFormProps) {
+export function MetaPromptForm({ onSubmit, isLoading }: MetaPromptFormProps) {
   const form = useForm<MetaPromptInput>({
     resolver: zodResolver(metaPromptSchema),
     defaultValues: {
@@ -35,17 +27,8 @@ export function MetaPromptForm({
   });
 
   return (
-    <Card className="p-6">
-      <div className="flex justify-between items-center mb-4">
-        <Label className="text-lg">What kind of AI assistant do you want?</Label>
-        <ModelSettingsSection
-          title="Meta Prompt Settings"
-          description="Configure the model for generating the meta prompt"
-          config={modelConfig}
-          onChange={onModelConfigChange}
-        />
-      </div>
-
+    <div className="space-y-4">
+      <Label className="text-base">What kind of AI assistant do you want?</Label>
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
           <FormField
@@ -66,10 +49,10 @@ export function MetaPromptForm({
           />
 
           <Button type="submit" className="w-full" disabled={isLoading}>
-            {isLoading ? "Generating..." : "Generate"}
+            {isLoading ? "Generating..." : "Generate Meta Prompt"}
           </Button>
         </form>
       </Form>
-    </Card>
+    </div>
   );
 }
