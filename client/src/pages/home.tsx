@@ -1,15 +1,15 @@
 import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
+import { FlowCanvas } from "@/components/flow/flow-canvas";
+import { useToast } from "@/hooks/use-toast";
+import type { ModelConfig } from "@/components/settings/model-settings-section";
 import { apiRequest } from "@/lib/queryClient";
-import { generateMetaPrompt, generateVariations, evaluatePrompt, generateTestCases, generateResponse, compareModels, type StreamMetrics } from "@/lib/openai"; // Added generateResponse and compareModels imports
+import { generateMetaPrompt, generateVariations, evaluatePrompt, generateTestCases, generateResponse, compareModels, type StreamMetrics } from "@/lib/openai";
 import { PromptChain } from "@/components/prompt-chain";
 import { MetaPromptForm } from "@/components/meta-prompt-form";
 import { VariationGenerator } from "@/components/variation-generator";
 import { ComparisonDashboard } from "@/components/comparison-dashboard";
-import { useToast } from "@/hooks/use-toast";
-import { TestCreator } from "@/components/test-creator";
 import type { MetaPromptInput, TestCase, EvaluationResult, EvaluationCriterion } from "@shared/schema";
-import type { ModelConfig } from "@/components/settings/model-settings-section";
 
 const MAX_TOKENS = {
   openai: 4096,  // For GPT-4
@@ -27,14 +27,11 @@ const defaultModelConfig: ModelConfig = {
   presencePenalty: 0,
   apiKey: "",
   systemPrompt: "You are a professional AI prompt engineer, skilled at creating detailed and effective prompts. Your goal is to create clear, structured prompts that guide AI models to provide high-quality responses.",
-  // OpenAI specific
   responseFormat: { type: "json_object" },
   seed: undefined,
   tools: undefined,
   toolChoice: undefined,
-  // Anthropic specific
   topK: undefined,
-  // Groq specific
   stopSequences: undefined
 };
 
@@ -255,78 +252,51 @@ export default function Home() {
     }
   };
 
+  const handleStepComplete = (step: number) => {
+    setCurrentStep(Math.max(currentStep, step + 1));
+  };
+
   return (
     <div className="container mx-auto py-8 space-y-8">
       <h1 className="text-4xl font-bold text-center mb-8 bg-gradient-to-r from-green-500 to-blue-500 text-transparent bg-clip-text">
         Prompt Optimization System
       </h1>
 
-      <PromptChain currentStep={currentStep} />
-
-      <div className="space-y-8">
-        <MetaPromptForm
-          onSubmit={handleMetaPromptSubmit}
-          modelConfig={metaPromptConfig}
-          onModelConfigChange={setMetaPromptConfig}
-          isLoading={metaPromptMutation.isPending}
-        />
-
-        {metaPrompt && (
-          <VariationGenerator
-            metaPrompt={metaPrompt}
-            onGenerate={(count) => variationMutation.mutateAsync(count)}
-            variations={variations}
-            isLoading={variationMutation.isPending}
-            modelConfig={useDefaultForVariation ? metaPromptConfig : variationConfig}
-            onModelConfigChange={setVariationConfig}
-            defaultConfig={metaPromptConfig}
-            useDefaultSettings={useDefaultForVariation}
-            onUseDefaultSettingsChange={setUseDefaultForVariation}
-          />
-        )}
-
-        {variations.length > 0 && (
-          <TestCreator
-            onAddTest={(test) => {
-              setTestCases([...testCases, test]);
-              setCurrentStep(3);
-            }}
-            onGenerateTests={() => testGenerationMutation.mutateAsync()}
-            testCases={testCases}
-            onRemoveTest={(index) => {
-              setTestCases(testCases.filter((_, i) => i !== index));
-            }}
-            onUpdateTest={(index, test) => {
-              const newTestCases = [...testCases];
-              newTestCases[index] = test;
-              setTestCases(newTestCases);
-            }}
-            modelConfig={useDefaultForTest ? metaPromptConfig : testConfig}
-            onModelConfigChange={setTestConfig}
-            defaultConfig={metaPromptConfig}
-            useDefaultSettings={useDefaultForTest}
-            onUseDefaultSettingsChange={setUseDefaultForTest}
-            isGenerating={testGenerationMutation.isPending}
-          />
-        )}
-
-        {testCases.length > 0 && (
-          <ComparisonDashboard
-            variations={variations}
-            testCases={testCases}
-            evaluationResults={evaluationResults}
-            onEvaluate={(criteria) => evaluationMutation.mutateAsync(criteria)}
-            isEvaluating={evaluationMutation.isPending}
-            modelConfig={useDefaultForEvaluation ? metaPromptConfig : evaluationConfig}
-            onModelConfigChange={setEvaluationConfig}
-            defaultConfig={metaPromptConfig}
-            useDefaultSettings={useDefaultForEvaluation}
-            onUseDefaultSettingsChange={setUseDefaultForEvaluation}
-            modelResults={modelResults}
-            onCompareModels={handleModelComparison}
-          />
-        )}
-      </div>
+      <FlowCanvas
+        currentStep={currentStep}
+        onStepComplete={handleStepComplete}
+        baseInput={baseInput}
+        setBaseInput={setBaseInput}
+        metaPrompt={metaPrompt}
+        setMetaPrompt={setMetaPrompt}
+        variations={variations}
+        setVariations={setVariations}
+        testCases={testCases}
+        setTestCases={setTestCases}
+        evaluationResults={evaluationResults}
+        setEvaluationResults={setEvaluationResults}
+        metaPromptConfig={metaPromptConfig}
+        setMetaPromptConfig={setMetaPromptConfig}
+        variationConfig={variationConfig}
+        setVariationConfig={setVariationConfig}
+        testConfig={testConfig}
+        setTestConfig={setTestConfig}
+        evaluationConfig={evaluationConfig}
+        setEvaluationConfig={setEvaluationConfig}
+        useDefaultForVariation={useDefaultForVariation}
+        setUseDefaultForVariation={setUseDefaultForVariation}
+        useDefaultForTest={useDefaultForTest}
+        setUseDefaultForTest={setUseDefaultForTest}
+        useDefaultForEvaluation={useDefaultForEvaluation}
+        setUseDefaultForEvaluation={setUseDefaultForEvaluation}
+        modelResults={modelResults}
+        setModelResults={setModelResults}
+        metaPromptMutation={metaPromptMutation}
+        variationMutation={variationMutation}
+        testGenerationMutation={testGenerationMutation}
+        evaluationMutation={evaluationMutation}
+        handleModelComparison={handleModelComparison}
+      />
     </div>
   );
 }
