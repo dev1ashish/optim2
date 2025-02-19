@@ -147,12 +147,12 @@ const nodeTypes = {
 };
 
 export function FlowCanvas(props: FlowCanvasProps) {
-  // Define nodes with better spacing and layout
+  // Define nodes with better spacing
   const nodes: Node[] = [
     {
       id: '1',
       type: 'metaPrompt',
-      position: { x: 50, y: 100 },
+      position: { x: 50, y: 50 },
       draggable: true,
       data: {
         onSubmit: props.metaPromptMutation.mutateAsync,
@@ -168,7 +168,7 @@ export function FlowCanvas(props: FlowCanvasProps) {
     {
       id: '2',
       type: 'variation',
-      position: { x: 500, y: 100 },
+      position: { x: 600, y: 50 },
       draggable: true,
       data: {
         metaPrompt: props.metaPrompt,
@@ -189,7 +189,7 @@ export function FlowCanvas(props: FlowCanvasProps) {
     {
       id: '3',
       type: 'testCase',
-      position: { x: 950, y: 100 },
+      position: { x: 1150, y: 50 },
       draggable: true,
       data: {
         onAddTest: (test: TestCase) => {
@@ -221,7 +221,7 @@ export function FlowCanvas(props: FlowCanvasProps) {
     {
       id: '4',
       type: 'comparison',
-      position: { x: 1400, y: 100 },
+      position: { x: 1700, y: 50 },
       draggable: true,
       data: {
         variations: props.variations,
@@ -280,13 +280,9 @@ export function FlowCanvas(props: FlowCanvasProps) {
         nodeTypes={nodeTypes}
         fitView
         className="bg-background"
-        minZoom={0.4}
+        minZoom={0.5}
         maxZoom={1.5}
-        defaultViewport={{ x: 0, y: 0, zoom: 0.7 }}
-        fitViewOptions={{
-          padding: 0.2,
-          includeHiddenNodes: true,
-        }}
+        defaultViewport={{ x: 0, y: 0, zoom: 0.8 }}
       >
         <Background color="hsl(var(--muted-foreground))" variant="dots" />
         <Controls className="bg-background border-primary" />
