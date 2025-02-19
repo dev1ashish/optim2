@@ -105,7 +105,7 @@ const VariationsNode = memo(({ data }: { data: { variations: string[] } }) => (
 ));
 
 const LeaderboardNode = memo(({ data }: { data: { evaluations: ProcessResult['evaluations'] } }) => (
-  <div className="w-[600px]">
+  <div className="w-[800px]">
     <Handle type="target" position={Position.Top} />
     <Card className="p-4">
       <Label className="text-lg mb-2 block">Evaluation Leaderboard</Label>
@@ -115,8 +115,8 @@ const LeaderboardNode = memo(({ data }: { data: { evaluations: ProcessResult['ev
             <TableRow>
               <TableHead>Rank</TableHead>
               <TableHead>Variation</TableHead>
-              <TableHead className="text-center">Scores</TableHead>
-              <TableHead>Average</TableHead>
+              <TableHead className="text-center">Detailed Scores</TableHead>
+              <TableHead>Weighted Avg</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -132,16 +132,23 @@ const LeaderboardNode = memo(({ data }: { data: { evaluations: ProcessResult['ev
                   <TableCell className="font-medium">#{rank + 1}</TableCell>
                   <TableCell>Variation {result.variationIndex + 1}</TableCell>
                   <TableCell>
-                    <div className="flex flex-col space-y-1 text-sm">
+                    <div className="flex flex-col space-y-2 text-sm">
                       {result.scores.map(score => (
-                        <div key={score.criterionId} className="flex justify-between">
-                          <span>{score.criterionId}:</span>
-                          <span>{Math.round(score.score * 10)}/10</span>
+                        <div key={score.criterionId} className="space-y-1">
+                          <div className="flex justify-between font-medium">
+                            <span>{score.criterionId}:</span>
+                            <span>{Math.round(score.score * 10)}/10</span>
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            {score.explanation}
+                          </div>
                         </div>
                       ))}
                     </div>
                   </TableCell>
-                  <TableCell>{(result.avgScore * 10).toFixed(1)}/10</TableCell>
+                  <TableCell className="font-medium">
+                    {(result.avgScore * 10).toFixed(1)}/10
+                  </TableCell>
                 </TableRow>
               ))}
           </TableBody>

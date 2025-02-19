@@ -2,34 +2,82 @@ import OpenAI from "openai";
 import type { MetaPromptInput } from "@shared/schema";
 import type { Provider } from "@/types";
 
-// Updated evaluation criteria
+// Updated evaluation criteria with weights
 export const DEFAULT_EVALUATION_CRITERIA = [
   { 
     id: "relevance", 
     name: "Relevance", 
-    description: "How well does the output align with the original user prompt?" 
+    description: "How precisely does the output align with the original user prompt?",
+    defaultWeight: 1.0
   },
   { 
     id: "coherence", 
     name: "Coherence", 
-    description: "Is the response logically structured and fluent?" 
+    description: "Is the response logically structured with clear flow and transitions?",
+    defaultWeight: 0.9
   },
   { 
     id: "creativity", 
     name: "Creativity", 
-    description: "Does the response show uniqueness and innovation?" 
+    description: "Does the response demonstrate innovative thinking and unique approaches?",
+    defaultWeight: 0.8
   },
   { 
     id: "accuracy", 
     name: "Accuracy", 
-    description: "For fact-based prompts, does the output contain correct information?" 
+    description: "Are all factual statements correct and verifiable?",
+    defaultWeight: 1.0
   },
   { 
     id: "conciseness", 
     name: "Conciseness", 
-    description: "Is the response to the point without unnecessary verbosity?" 
+    description: "Is the response optimally concise without sacrificing clarity?",
+    defaultWeight: 0.7
+  },
+  {
+    id: "diversity",
+    name: "Response Diversity",
+    description: "How varied and comprehensive are the different aspects covered?",
+    defaultWeight: 0.8
+  },
+  {
+    id: "bias",
+    name: "Bias Detection",
+    description: "Are there any unintended biases or assumptions in the response?",
+    defaultWeight: 0.9
+  },
+  {
+    id: "readability",
+    name: "Readability",
+    description: "How accessible and clear is the language for the target audience?",
+    defaultWeight: 0.8
   }
 ];
+
+// Task type detection for weight adjustment
+function getTaskWeights(input: string) {
+  const weights = { ...Object.fromEntries(DEFAULT_EVALUATION_CRITERIA.map(c => [c.id, c.defaultWeight])) };
+
+  // Detect creative tasks
+  if (input.toLowerCase().includes("creative") || 
+      input.toLowerCase().includes("write") || 
+      input.toLowerCase().includes("generate story")) {
+    weights.creativity = 1.2;
+    weights.diversity = 1.1;
+    weights.accuracy = 0.8;
+  }
+
+  // Detect technical/factual tasks
+  if (input.toLowerCase().includes("explain") || 
+      input.toLowerCase().includes("technical") || 
+      input.toLowerCase().includes("facts")) {
+    weights.accuracy = 1.3;
+    weights.coherence = 1.1;
+    weights.creativity = 0.6;
+  }
+
+  return weights;
+}
 
 export interface ModelConfigItem {
   id: string;
@@ -82,7 +130,7 @@ Format the response as a detailed prompt with clear sections for:
         content: prompt
       }
     ],
-    temperature: 0.3, // Lower temperature for more consistent outputs
+    temperature: 0.3,
     max_tokens: DEFAULT_MODEL_CONFIG.maxTokens
   });
 
@@ -109,6 +157,7 @@ Guidelines for each variation:
 2. Each variation should be unique and well-structured
 3. Keep the essential constraints while exploring different angles
 4. Aim for at least 250 words per variation
+5. Ensure each variation has a distinct approach and perspective
 
 Remember: Return only a JSON object with a "variations" array containing exactly ${count} strings.`;
 
@@ -124,7 +173,7 @@ Remember: Return only a JSON object with a "variations" array containing exactly
         content: prompt
       }
     ],
-    temperature: 0.3, // Lower temperature for consistent JSON
+    temperature: 0.7,
     max_tokens: DEFAULT_MODEL_CONFIG.maxTokens,
     response_format: { type: "json_object" }
   });
@@ -158,19 +207,30 @@ export async function evaluateVariations(
     dangerouslyAllowBrowser: true
   });
 
+  const weights = getTaskWeights(originalRequest);
   const results = [];
 
-  // Generate 5 test responses for each variation
   for (let i = 0; i < variations.length; i++) {
-    const prompt = `Evaluate the following prompt variation carefully.
+    const prompt = `You are a strict and critical prompt evaluator. Your goal is to provide detailed, honest, and constructive criticism of the following prompt variation.
 
 Original Request: "${originalRequest}"
 
-Prompt Variation:
+Prompt Variation to Evaluate:
 ${variations[i]}
 
-Evaluate this variation using the following criteria on a scale of 1-10:
-${DEFAULT_EVALUATION_CRITERIA.map(c => `- ${c.name}: ${c.description}`).join('\n')}
+Evaluate this variation using these criteria on a scale of 1-10, where:
+1-3: Poor, significant issues
+4-6: Average, needs improvement
+7-8: Good, minor issues
+9-10: Excellent, exceptional quality
+
+${DEFAULT_EVALUATION_CRITERIA.map(c => `- ${c.name} (Weight: ${weights[c.id]}): ${c.description}`).join('\n')}
+
+Additional Analysis Required:
+1. Diversity Check: Analyze the variation for coverage of different perspectives and approaches
+2. Bias Detection: Identify any potential biases or problematic assumptions
+3. Readability Analysis: Assess the clarity and accessibility of the language
+4. Hallucination Risk: Evaluate the potential for generating false or misleading information
 
 Return a JSON object in this exact format:
 {
@@ -178,22 +238,19 @@ Return a JSON object in this exact format:
     {
       "criterionId": "criterion-id",
       "score": [score between 0.0-1.0, divide your 1-10 score by 10],
-      "explanation": "Brief explanation of the score"
+      "explanation": "Detailed explanation of the score with specific examples and suggestions for improvement"
     }
   ]
 }
 
-Provide detailed explanations for each score, considering:
-1. How well the prompt achieves its intended purpose
-2. Potential improvements or shortcomings
-3. Specific strengths in each criterion`;
+Be extremely critical in your evaluation. Do not be lenient - if there are issues, they should be reflected in the scores.`;
 
     const response = await openai.chat.completions.create({
       model: DEFAULT_MODEL_CONFIG.model,
       messages: [
         {
           role: "system",
-          content: "You are an expert prompt evaluator. Provide thorough, unbiased assessments of prompt quality across multiple criteria."
+          content: "You are a highly critical prompt evaluator with expertise in NLP and prompt engineering. Your evaluations should be thorough, unbiased, and strict."
         },
         {
           role: "user",
@@ -211,9 +268,16 @@ Provide detailed explanations for each score, considering:
       if (!Array.isArray(result.evaluations)) {
         throw new Error("Invalid evaluation format");
       }
+
+      // Apply weights to scores
+      const weightedScores = result.evaluations.map((evaluation) => ({
+        ...evaluation,
+        score: evaluation.score * weights[evaluation.criterionId]
+      }));
+
       results.push({
         variationIndex: i,
-        scores: result.evaluations
+        scores: weightedScores
       });
     } catch (error) {
       console.error(`Failed to evaluate variation ${i}:`, error);
