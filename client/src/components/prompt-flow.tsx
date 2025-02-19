@@ -19,7 +19,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Loader2 } from "lucide-react";
+import { Loader2, GripHorizontal } from "lucide-react";
 import type { EvaluationScore } from "@/lib/openai";
 import { memo } from 'react';
 
@@ -41,12 +41,14 @@ interface InputNodeProps {
   };
 }
 
-// Memoize the nodes to prevent unnecessary re-renders
 const InputNode = memo(({ data }: InputNodeProps) => (
-  <div className="w-[400px]">
+  <div className="w-[400px] cursor-move">
     <Handle type="source" position={Position.Bottom} />
-    <Card className="p-4">
-      <Label className="text-lg mb-2 block">Meta Prompt Generation</Label>
+    <Card className="p-4 hover:shadow-lg transition-shadow">
+      <div className="flex items-center justify-between mb-2">
+        <Label className="text-lg">Meta Prompt Generation</Label>
+        <GripHorizontal className="text-muted-foreground" size={16} />
+      </div>
       <div className="space-y-4">
         <Textarea
           value={data.value}
@@ -74,10 +76,13 @@ const InputNode = memo(({ data }: InputNodeProps) => (
 ));
 
 const MetaPromptNode = memo(({ data }: { data: { content: string } }) => (
-  <div className="w-[400px]">
+  <div className="w-[400px] cursor-move">
     <Handle type="target" position={Position.Top} />
-    <Card className="p-4">
-      <Label className="text-lg mb-2 block">Generated Meta Prompt</Label>
+    <Card className="p-4 hover:shadow-lg transition-shadow">
+      <div className="flex items-center justify-between mb-2">
+        <Label className="text-lg">Generated Meta Prompt</Label>
+        <GripHorizontal className="text-muted-foreground" size={16} />
+      </div>
       <ScrollArea className="h-[150px] w-full rounded-md border p-2">
         <div className="whitespace-pre-wrap">{data.content}</div>
       </ScrollArea>
@@ -87,10 +92,13 @@ const MetaPromptNode = memo(({ data }: { data: { content: string } }) => (
 ));
 
 const VariationsNode = memo(({ data }: { data: { variations: string[] } }) => (
-  <div className="w-[800px]">
+  <div className="w-[800px] cursor-move">
     <Handle type="target" position={Position.Top} />
-    <Card className="p-4">
-      <Label className="text-lg mb-2 block">Generated Variations</Label>
+    <Card className="p-4 hover:shadow-lg transition-shadow">
+      <div className="flex items-center justify-between mb-2">
+        <Label className="text-lg">Generated Variations</Label>
+        <GripHorizontal className="text-muted-foreground" size={16} />
+      </div>
       <div className="grid grid-cols-3 gap-4">
         {data.variations.map((variation, index) => (
           <ScrollArea key={index} className="h-[200px] rounded-md border p-2">
@@ -105,10 +113,13 @@ const VariationsNode = memo(({ data }: { data: { variations: string[] } }) => (
 ));
 
 const LeaderboardNode = memo(({ data }: { data: { evaluations: ProcessResult['evaluations'] } }) => (
-  <div className="w-[800px]">
+  <div className="w-[800px] cursor-move">
     <Handle type="target" position={Position.Top} />
-    <Card className="p-4">
-      <Label className="text-lg mb-2 block">Evaluation Leaderboard</Label>
+    <Card className="p-4 hover:shadow-lg transition-shadow">
+      <div className="flex items-center justify-between mb-2">
+        <Label className="text-lg">Evaluation Leaderboard</Label>
+        <GripHorizontal className="text-muted-foreground" size={16} />
+      </div>
       <div className="rounded-lg overflow-hidden border">
         <Table>
           <TableHeader>
@@ -164,7 +175,6 @@ const LeaderboardNode = memo(({ data }: { data: { evaluations: ProcessResult['ev
   </div>
 ));
 
-// Memoize the node types
 const nodeTypes = {
   input: InputNode,
   metaPrompt: MetaPromptNode,
@@ -185,32 +195,36 @@ export function PromptFlow({ input, onInputChange, onGenerate, isGenerating, res
     {
       id: '1',
       type: 'input',
-      position: { x: 400, y: 0 },
+      position: { x: 400, y: 50 },
       data: { 
         value: input,
         onChange: onInputChange,
         onGenerate,
         isGenerating
-      }
+      },
+      draggable: true
     },
     ...(result ? [
       {
         id: '2',
         type: 'metaPrompt',
-        position: { x: 400, y: 200 },
-        data: { content: result.metaPrompt }
+        position: { x: 400, y: 300 },
+        data: { content: result.metaPrompt },
+        draggable: true
       },
       {
         id: '3',
         type: 'variations',
-        position: { x: 200, y: 400 },
-        data: { variations: result.variations }
+        position: { x: 200, y: 600 },
+        data: { variations: result.variations },
+        draggable: true
       },
       {
         id: '4',
         type: 'leaderboard',
-        position: { x: 300, y: 700 },
-        data: { evaluations: result.evaluations }
+        position: { x: 200, y: 1000 },
+        data: { evaluations: result.evaluations },
+        draggable: true
       }
     ] : [])
   ];
@@ -240,12 +254,15 @@ export function PromptFlow({ input, onInputChange, onGenerate, isGenerating, res
   ] : [];
 
   return (
-    <div className="h-[800px] w-full border rounded-lg">
+    <div className="h-[1200px] w-full border rounded-lg">
       <ReactFlow
         nodes={nodes}
         edges={edges}
         nodeTypes={nodeTypes}
-        fitView
+        defaultViewport={{ x: 0, y: 0, zoom: 0.7 }}
+        minZoom={0.2}
+        maxZoom={1.5}
+        fitView={false}
       >
         <Background />
         <Controls />
