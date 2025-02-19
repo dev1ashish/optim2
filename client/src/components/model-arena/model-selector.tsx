@@ -1,43 +1,50 @@
 import { useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { MODEL_CONFIGS, type Provider, getDefaultConfig } from "@/lib/model-config";
-import type { ModelConfig } from "@/components/settings/model-settings";
+import { Button } from "@/components/ui/button";
+import { MODEL_CONFIGS } from "@/lib/model-config";
+import type { ModelConfig } from "@/components/settings/model-settings-section";
 
 interface ModelSelectorProps {
   onModelConfigsChange: (configs: ModelConfig[]) => void;
+  selectedConfigs: ModelConfig[];
 }
 
-export function ModelSelector({ onModelConfigsChange }: ModelSelectorProps) {
-  const [selectedProviders, setSelectedProviders] = useState<Record<Provider, boolean>>(
-    Object.keys(MODEL_CONFIGS).reduce((acc, key) => ({ ...acc, [key]: false }), {}) as Record<Provider, boolean>
+export function ModelSelector({ onModelConfigsChange, selectedConfigs }: ModelSelectorProps) {
+  const [selectedProviders, setSelectedProviders] = useState<Record<string, boolean>>(
+    Object.fromEntries(
+      Object.keys(MODEL_CONFIGS).map(provider => [
+        provider,
+        selectedConfigs.some(config => config.provider === provider)
+      ])
+    )
   );
-  const [apiKeys, setApiKeys] = useState<Record<Provider, string>>(
-    Object.keys(MODEL_CONFIGS).reduce((acc, key) => ({ ...acc, [key]: "" }), {}) as Record<Provider, string>
-  );
-  const [selectedModels, setSelectedModels] = useState<Record<Provider, string[]>>(
-    Object.keys(MODEL_CONFIGS).reduce((acc, key) => ({ ...acc, [key]: [] }), {}) as Record<Provider, string[]>
+  const [selectedModels, setSelectedModels] = useState<Record<string, string[]>>(
+    Object.fromEntries(
+      Object.entries(MODEL_CONFIGS).map(([provider, _]) => [
+        provider,
+        selectedConfigs
+          .filter(config => config.provider === provider)
+          .map(config => config.model)
+      ])
+    )
   );
 
-  const handleProviderToggle = (provider: Provider, checked: boolean) => {
+  const handleProviderToggle = (provider: string, checked: boolean) => {
     setSelectedProviders(prev => ({ ...prev, [provider]: checked }));
     if (!checked) {
-      const { [provider]: _, ...restApiKeys } = apiKeys;
+      // Remove selected models when provider is deselected
       const { [provider]: __, ...restModels } = selectedModels;
-      setApiKeys({ ...restApiKeys, [provider]: "" });
-      setSelectedModels({ ...restModels, [provider]: [] });
-    } 
+      setSelectedModels(restModels);
+    } else {
+      // Initialize empty array for selected models when provider is selected
+      setSelectedModels(prev => ({ ...prev, [provider]: [] }));
+    }
   };
 
-  const handleApiKeyChange = (provider: Provider, key: string) => {
-    setApiKeys(prev => ({ ...prev, [provider]: key }));
-  };
-
-  const handleModelToggle = (provider: Provider, modelId: string, checked: boolean) => {
+  const handleModelToggle = (provider: string, modelId: string, checked: boolean) => {
     setSelectedModels(prev => ({
       ...prev,
       [provider]: checked 
@@ -50,13 +57,12 @@ export function ModelSelector({ onModelConfigsChange }: ModelSelectorProps) {
     const configs: ModelConfig[] = Object.entries(selectedProviders)
       .filter(([_, selected]) => selected)
       .flatMap(([provider]) => {
-        const providerModels = selectedModels[provider as Provider] || [];
+        const providerModels = selectedModels[provider] || [];
         return providerModels.map(modelId => ({
-          ...getDefaultConfig(provider as Provider, modelId),
-          apiKey: apiKeys[provider as Provider]
+          ...MODEL_CONFIGS[provider as keyof typeof MODEL_CONFIGS].models.find(m => m.id === modelId)!,
+          provider: provider as ModelConfig["provider"]
         }));
       });
-
     onModelConfigsChange(configs);
   };
 
@@ -69,24 +75,14 @@ export function ModelSelector({ onModelConfigsChange }: ModelSelectorProps) {
           <div key={provider} className="space-y-2">
             <div className="flex items-center gap-2">
               <Checkbox
-                checked={selectedProviders[provider as Provider] || false}
-                onCheckedChange={(checked) => handleProviderToggle(provider as Provider, checked as boolean)}
+                checked={selectedProviders[provider] || false}
+                onCheckedChange={(checked) => handleProviderToggle(provider, checked as boolean)}
               />
               <Label>{config.name}</Label>
             </div>
 
-            {selectedProviders[provider as Provider] && (
-              <div className="ml-6 space-y-2">
-                <div>
-                  <Label className="text-sm">API Key</Label>
-                  <Input
-                    type="password"
-                    value={apiKeys[provider as Provider] || ""}
-                    onChange={(e) => handleApiKeyChange(provider as Provider, e.target.value)}
-                    placeholder={`Enter ${config.name} API Key`}
-                  />
-                </div>
-
+            {selectedProviders[provider] && (
+              <div className="ml-6">
                 <div>
                   <Label className="text-sm">Models</Label>
                   <ScrollArea className="h-40 rounded border p-2">
@@ -94,9 +90,9 @@ export function ModelSelector({ onModelConfigsChange }: ModelSelectorProps) {
                       {config.models.map((model) => (
                         <div key={model.id} className="flex items-center gap-2">
                           <Checkbox
-                            checked={(selectedModels[provider as Provider] || []).includes(model.id)}
+                            checked={(selectedModels[provider] || []).includes(model.id)}
                             onCheckedChange={(checked) => 
-                              handleModelToggle(provider as Provider, model.id, checked as boolean)
+                              handleModelToggle(provider, model.id, checked as boolean)
                             }
                           />
                           <span className="text-sm">{model.name}</span>

@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
-import { generateMetaPrompt, generateVariations, evaluatePrompt, generateTestCases, generateResponse, compareModels, type StreamMetrics } from "@/lib/openai";
+import { generateMetaPrompt, generateVariations, evaluatePrompt, generateTestCases, generateResponse, compareModels, type StreamMetrics } from "@/lib/openai"; // Added generateResponse and compareModels imports
 import { PromptChain } from "@/components/prompt-chain";
 import { MetaPromptForm } from "@/components/meta-prompt-form";
 import { VariationGenerator } from "@/components/variation-generator";
@@ -217,6 +217,7 @@ export default function Home() {
     testCase: string,
     configs: ModelConfig[]
   ) => {
+    // Initialize results for each model
     setModelResults(configs.map(config => ({
       modelConfig: config,
       response: "",
@@ -230,29 +231,20 @@ export default function Home() {
     })));
 
     try {
-      await compareModels(
-        prompt,
-        testCase,
-        configs,
-        (modelIndex, chunk, metrics) => {
-          setModelResults(prev => prev.map((result, i) => {
-            if (i === modelIndex) {
-              return {
-                ...result,
-                response: metrics.scores ? result.response : result.response + chunk,
-                metrics: {
-                  ...metrics,
-                  scores: metrics.scores || result.metrics.scores
-                },
-                streamProgress: metrics.endTime ? 100 : ((metrics.tokenCount / 100) * 100),
-                isStreaming: !metrics.endTime
-              };
-            }
-            return result;
-          }));
-        },
-        evaluationResults
-      );
+      await compareModels(prompt, testCase, configs, (modelIndex, chunk, metrics) => {
+        setModelResults(prev => prev.map((result, i) => {
+          if (i === modelIndex) {
+            return {
+              ...result,
+              response: result.response + chunk,
+              metrics,
+              streamProgress: metrics.endTime ? 100 : ((metrics.tokenCount / (metrics.totalTokens || 100)) * 100),
+              isStreaming: !metrics.endTime
+            };
+          }
+          return result;
+        }));
+      });
     } catch (error) {
       console.error("Model comparison error:", error);
       toast({
@@ -322,9 +314,16 @@ export default function Home() {
           <ComparisonDashboard
             variations={variations}
             testCases={testCases}
-            onCompareModels={handleModelComparison}
-            modelResults={modelResults}
+            evaluationResults={evaluationResults}
+            onEvaluate={(criteria) => evaluationMutation.mutateAsync(criteria)}
+            isEvaluating={evaluationMutation.isPending}
+            modelConfig={useDefaultForEvaluation ? metaPromptConfig : evaluationConfig}
+            onModelConfigChange={setEvaluationConfig}
             defaultConfig={metaPromptConfig}
+            useDefaultSettings={useDefaultForEvaluation}
+            onUseDefaultSettingsChange={setUseDefaultForEvaluation}
+            modelResults={modelResults}
+            onCompareModels={handleModelComparison}
           />
         )}
       </div>
