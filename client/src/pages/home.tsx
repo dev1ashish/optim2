@@ -2,128 +2,73 @@ import { useState, useEffect } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { GlobalSettings, type GlobalSettings as GlobalSettingsType } from "@/components/settings/global-settings";
-import { apiRequest } from "@/lib/queryClient";
-import { generateMetaPrompt, generateVariations, evaluatePrompt, generateTestCases } from "@/lib/openai";
-import type { MetaPromptInput, TestCase, EvaluationResult, EvaluationCriterion } from "@shared/schema";
-import { PromptChain } from "@/components/prompt-chain";
-import { MetaPromptForm } from "@/components/meta-prompt-form";
-import { VariationGenerator } from "@/components/variation-generator";
-import { TestCreator } from "@/components/test-creator";
-import { EvaluationCriteriaManager } from "@/components/evaluation-criteria-manager";
+import { 
+  generateMetaPrompt, 
+  generateVariations, 
+  evaluateVariations,
+  DEFAULT_EVALUATION_CRITERIA,
+  type EvaluationScore 
+} from "@/lib/openai";
+import type { MetaPromptInput } from "@shared/schema";
+import { Card } from "@/components/ui/card";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Button } from "@/components/ui/button";
+import { ScrollArea } from "@/components/ui/scroll-area";
 
-// Default model configuration using GPT-4o
-const defaultModelConfig = {
-  provider: "openai" as const,
-  model: "gpt-4o",
-  temperature: 0.7,
-  maxTokens: 4096,
-  systemPrompt: "You are a professional AI prompt engineer, skilled at creating detailed and effective prompts."
-};
+interface ProcessResult {
+  metaPrompt: string;
+  variations: string[];
+  evaluations: Array<{
+    variationIndex: number;
+    scores: EvaluationScore[];
+  }>;
+}
 
 export default function Home() {
-  const [currentStep, setCurrentStep] = useState(1);
   const [showSettings, setShowSettings] = useState(true);
-  const [baseInput, setBaseInput] = useState("");
-  const [metaPrompt, setMetaPrompt] = useState("");
-  const [variations, setVariations] = useState<string[]>([]);
-  const [testCases, setTestCases] = useState<TestCase[]>([]);
-  const [evaluationResults, setEvaluationResults] = useState<EvaluationResult[]>([]);
   const [globalSettings, setGlobalSettings] = useState<GlobalSettingsType>({});
-
+  const [baseInput, setBaseInput] = useState("");
+  const [result, setResult] = useState<ProcessResult | null>(null);
   const { toast } = useToast();
 
-  // Use the OpenAI key from global settings
-  const getConfigWithKey = () => ({
-    ...defaultModelConfig,
-    apiKey: globalSettings.openaiKey
-  });
-
-  const checkApiKey = () => {
-    if (!globalSettings.openaiKey) {
-      setShowSettings(true);
-      toast({
-        title: "API Key Required",
-        description: "Please set your OpenAI API key in the settings before proceeding.",
-        variant: "destructive"
-      });
-      return false;
-    }
-    return true;
-  };
-
-  const metaPromptMutation = useMutation({
+  const generateMutation = useMutation({
     mutationFn: async (input: MetaPromptInput) => {
-      if (!checkApiKey()) return;
-      setBaseInput(input.baseInput);
-      const generatedPrompt = await generateMetaPrompt(input, getConfigWithKey());
-      setMetaPrompt(generatedPrompt);
-      setCurrentStep(2);
-      return generatedPrompt;
-    },
-  });
-
-  const variationMutation = useMutation({
-    mutationFn: async (count: number) => {
-      if (!checkApiKey()) return;
-      const generatedVariations = await generateVariations(metaPrompt, count, getConfigWithKey());
-      if (!generatedVariations.length) {
-        throw new Error("Failed to generate variations");
+      if (!globalSettings.openaiKey) {
+        setShowSettings(true);
+        throw new Error("OpenAI API key is required");
       }
-      setVariations(generatedVariations);
-      setCurrentStep(3);
-      return generatedVariations;
-    }
-  });
 
-  const testGenerationMutation = useMutation({
-    mutationFn: async () => {
-      if (!checkApiKey()) return;
-      const generatedTests = await generateTestCases(
-        baseInput,
+      // Generate meta prompt
+      const metaPrompt = await generateMetaPrompt(input, globalSettings.openaiKey);
+      if (!metaPrompt) throw new Error("Failed to generate meta prompt");
+
+      // Generate variations
+      const variations = await generateVariations(metaPrompt, globalSettings.openaiKey);
+      if (!variations.length) throw new Error("Failed to generate variations");
+
+      // Evaluate variations
+      const evaluations = await evaluateVariations(
+        variations,
+        input.baseInput,
+        globalSettings.openaiKey
+      );
+
+      return {
         metaPrompt,
         variations,
-        getConfigWithKey()
-      );
-      if (!generatedTests.length) {
-        throw new Error("Failed to generate test cases");
-      }
-      setTestCases(generatedTests);
-      setCurrentStep(4);
-      return generatedTests;
-    }
-  });
-
-  const evaluationMutation = useMutation({
-    mutationFn: async (criteria: EvaluationCriterion[]) => {
-      if (!checkApiKey()) return;
-
-      const results: EvaluationResult[] = [];
-      for (const variation of variations) {
-        for (const testCase of testCases) {
-          const response = await generateMetaPrompt(
-            { baseInput: testCase.input },
-            { ...getConfigWithKey(), systemPrompt: variation }
-          );
-
-          const scores = await evaluatePrompt(
-            response,
-            testCase.input,
-            criteria.reduce((acc, c) => ({ ...acc, [c.id]: 0 }), {}),
-            getConfigWithKey()
-          );
-
-          results.push({
-            variationIndex: variations.indexOf(variation),
-            testCaseIndex: testCases.indexOf(testCase),
-            scores,
-            response
-          });
-        }
-      }
-
-      setEvaluationResults(results);
-      setCurrentStep(5);
-      return results;
+        evaluations
+      };
+    },
+    onSuccess: (data) => {
+      setResult(data);
+    },
+    onError: (error) => {
+      toast({
+        title: "Error",
+        description: error instanceof Error ? error.message : "An error occurred",
+        variant: "destructive"
+      });
     }
   });
 
@@ -140,51 +85,92 @@ export default function Home() {
         onOpenChange={setShowSettings}
       />
 
-      <PromptChain currentStep={currentStep} />
+      <div className="space-y-8">
+        {/* Input Section */}
+        <Card className="p-6">
+          <div className="space-y-4">
+            <Label className="text-lg">What kind of AI assistant do you want?</Label>
+            <Textarea
+              value={baseInput}
+              onChange={(e) => setBaseInput(e.target.value)}
+              placeholder='e.g., "I want an AI that helps with writing blog posts"'
+              className="min-h-[100px]"
+            />
+            <Button 
+              onClick={() => generateMutation.mutate({ baseInput })}
+              disabled={generateMutation.isPending || !baseInput.trim()}
+              className="w-full"
+            >
+              {generateMutation.isPending ? "Generating..." : "Generate"}
+            </Button>
+          </div>
+        </Card>
 
-      <div className="space-y-8 mt-8">
-        {currentStep === 1 && (
-          <MetaPromptForm
-            onSubmit={metaPromptMutation.mutate}
-            isLoading={metaPromptMutation.isPending}
-          />
-        )}
+        {/* Results Section */}
+        {result && (
+          <div className="space-y-8">
+            {/* Meta Prompt */}
+            <Card className="p-6">
+              <Label className="text-lg block mb-4">Generated Meta Prompt</Label>
+              <ScrollArea className="h-[200px] rounded-md border p-4">
+                <div className="whitespace-pre-wrap">{result.metaPrompt}</div>
+              </ScrollArea>
+            </Card>
 
-        {currentStep >= 2 && (
-          <VariationGenerator
-            metaPrompt={metaPrompt}
-            onGenerate={variationMutation.mutate}
-            variations={variations}
-            isLoading={variationMutation.isPending}
-          />
-        )}
+            {/* Variations */}
+            <Card className="p-6">
+              <Label className="text-lg block mb-4">Generated Variations</Label>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {result.variations.map((variation, index) => (
+                  <Card key={index} className="p-4">
+                    <Label className="text-sm font-medium mb-2 block">Variation {index + 1}</Label>
+                    <ScrollArea className="h-[300px]">
+                      <div className="whitespace-pre-wrap">{variation}</div>
+                    </ScrollArea>
+                  </Card>
+                ))}
+              </div>
+            </Card>
 
-        {currentStep >= 3 && (
-          <TestCreator
-            onAddTest={(test) => setTestCases([...testCases, test])}
-            onGenerateTests={testGenerationMutation.mutate}
-            testCases={testCases}
-            onRemoveTest={(index) => {
-              const newTests = [...testCases];
-              newTests.splice(index, 1);
-              setTestCases(newTests);
-            }}
-            onUpdateTest={(index, test) => {
-              const newTests = [...testCases];
-              newTests[index] = test;
-              setTestCases(newTests);
-            }}
-            isGenerating={testGenerationMutation.isPending}
-          />
-        )}
-
-        {currentStep >= 4 && (
-          <EvaluationCriteriaManager
-            criteria={[]}
-            onAddCriterion={() => {}}
-            onUpdateCriterion={() => {}}
-            onRemoveCriterion={() => {}}
-          />
+            {/* Evaluation Results */}
+            <Card className="p-6">
+              <Label className="text-lg block mb-4">Evaluation Results</Label>
+              <div className="overflow-x-auto">
+                <table className="w-full border-collapse">
+                  <thead>
+                    <tr>
+                      <th className="text-left p-2 border">Variation</th>
+                      {DEFAULT_EVALUATION_CRITERIA.map(criterion => (
+                        <th key={criterion.id} className="text-left p-2 border">
+                          {criterion.name}
+                        </th>
+                      ))}
+                      <th className="text-left p-2 border">Average Score</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {result.evaluations.map(({ variationIndex, scores }) => {
+                      const avgScore = scores.reduce((sum, s) => sum + s.score, 0) / scores.length;
+                      return (
+                        <tr key={variationIndex}>
+                          <td className="p-2 border">Variation {variationIndex + 1}</td>
+                          {DEFAULT_EVALUATION_CRITERIA.map(criterion => {
+                            const score = scores.find(s => s.criterionId === criterion.id);
+                            return (
+                              <td key={criterion.id} className="p-2 border">
+                                {score ? `${(score.score * 100).toFixed(1)}%` : 'N/A'}
+                              </td>
+                            );
+                          })}
+                          <td className="p-2 border">{(avgScore * 100).toFixed(1)}%</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </Card>
+          </div>
         )}
       </div>
     </div>

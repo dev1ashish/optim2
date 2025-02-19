@@ -1,245 +1,39 @@
 import OpenAI from "openai";
-import Anthropic from '@anthropic-ai/sdk';
 import type { MetaPromptInput } from "@shared/schema";
-import type { ModelConfig } from "@/components/settings/model-settings-section";
 import type { Provider } from "@/types";
 
+// Default evaluation criteria
+export const DEFAULT_EVALUATION_CRITERIA = [
+  { id: "clarity", name: "Clarity", description: "How clear and understandable is the prompt?" },
+  { id: "relevance", name: "Relevance", description: "How relevant is the prompt to the original request?" },
+  { id: "accuracy", name: "Accuracy", description: "How accurate and precise are the instructions?" },
+  { id: "completeness", name: "Completeness", description: "How comprehensive is the prompt in covering all aspects?" }
+];
+
 export interface ModelConfigItem {
-    id: string;
-    maxTokens: number;
+  id: string;
+  maxTokens: number;
 }
 
-export interface ProviderConfig {
-    models: ModelConfigItem[];
-}
-
-// Updated configurations with correct token limits
-const MODEL_CONFIGS = {
-    openai: {
-        models: [
-            { id: "gpt-4o", maxTokens: 8192 },
-            { id: "gpt-4o-mini", maxTokens: 4096 }
-        ]
-    },
-    anthropic: {
-        models: [
-            { id: "claude-3-5-sonnet-20241022", maxTokens: 8192 },
-            { id: "claude-3-5-haiku-20241022", maxTokens: 4096 }
-        ]
-    },
-    groq: {
-        models: [
-            { id: "mixtral-8x7b-32768", maxTokens: 32768 }
-        ]
-    }
-} as const;
-
-function getClient(config: ModelConfig) {
-    if (!config.apiKey) {
-        throw new Error("API key is required. Please set it in the model settings.");
-    }
-
-    switch (config.provider) {
-        case "openai":
-            return new OpenAI({
-                apiKey: config.apiKey,
-                dangerouslyAllowBrowser: true
-            });
-        case "anthropic":
-            return new Anthropic({
-                apiKey: config.apiKey,
-                dangerouslyAllowBrowser: true
-            });
-        case "groq":
-            return new OpenAI({
-                apiKey: config.apiKey,
-                baseURL: "https://api.groq.com/openai/v1",
-                dangerouslyAllowBrowser: true
-            });
-        default:
-            throw new Error(`Unsupported provider: ${config.provider}`);
-    }
-}
-
-function formatMessages(prompt: string, config: ModelConfig) {
-    const messages = [];
-
-    if (config.systemPrompt) {
-        if (config.provider === "anthropic") {
-            messages.push({
-                role: "assistant" as const,
-                content: config.systemPrompt
-            });
-        } else {
-            messages.push({
-                role: "system" as const,
-                content: config.systemPrompt
-            });
-        }
-    }
-
-    messages.push({
-        role: "user" as const,
-        content: prompt
-    });
-
-    return messages;
-}
-
-function handleApiError(error: any) {
-    console.error("API Error:", error);
-
-    if (error.error?.message?.includes("max_tokens")) {
-        throw new Error(`Token limit exceeded for model. Please reduce the max tokens setting.`);
-    }
-
-    if (error.error?.type === "tokens" || error.error?.code === "rate_limit_exceeded") {
-        throw new Error(`Rate limit exceeded. Please wait a moment and try again.`);
-    }
-
-    if (error.error?.message) {
-        throw new Error(`API Error: ${error.error.message}`);
-    }
-    if (error.status === 401) {
-        throw new Error("Invalid API key. Please check your credentials.");
-    }
-
-    throw error;
-}
-
-export interface StreamMetrics {
-    startTime: number;
-    endTime?: number;
-    tokenCount: number;
-    estimatedCost: number;
-}
-
-export async function* streamResponse(
-    prompt: string,
-    testCase: string,
-    config: ModelConfig,
-    onMetrics?: (metrics: StreamMetrics) => void
-): AsyncGenerator<{ chunk: string, metrics: StreamMetrics }> {
-    const client = getClient(config);
-    const metrics: StreamMetrics = {
-        startTime: Date.now(),
-        tokenCount: 0,
-        estimatedCost: 0
-    };
-
-    try {
-        const modifiedConfig = {
-            ...config,
-            systemPrompt: prompt
-        };
-
-        const modelConfig = getModelConfig(config.provider, config.model);
-        const maxTokens = modelConfig?.maxTokens || 4096;
-
-        if (config.provider === "anthropic") {
-            const stream = await (client as Anthropic).messages.create({
-                model: config.model,
-                max_tokens: Math.min(config.maxTokens, maxTokens),
-                temperature: config.temperature,
-                messages: formatMessages(testCase, modifiedConfig).map(msg => ({
-                    role: msg.role === "system" ? "assistant" : msg.role,
-                    content: msg.content
-                })),
-                stream: true
-            });
-
-            for await (const chunk of stream) {
-                if (chunk.type === 'content_block_delta' && chunk.delta?.type === 'text') {
-                    const text = chunk.delta.text;
-                    metrics.tokenCount += text.split(/\s+/).length;
-                    metrics.estimatedCost = metrics.tokenCount * 0.00003;
-                    onMetrics?.(metrics);
-                    yield { chunk: text, metrics };
-                }
-            }
-        } else if (config.provider === "openai" || config.provider === "groq") {
-            const stream = await (client as OpenAI).chat.completions.create({
-                model: config.model,
-                messages: formatMessages(testCase, modifiedConfig),
-                temperature: config.temperature,
-                max_tokens: Math.min(config.maxTokens, maxTokens),
-                stream: true
-            });
-
-            for await (const chunk of stream) {
-                const text = chunk.choices[0]?.delta?.content || "";
-                if (text) {
-                    metrics.tokenCount += text.split(/\s+/).length;
-                    metrics.estimatedCost = metrics.tokenCount * (config.provider === "groq" ? 0.000001 : 0.00001);
-                    onMetrics?.(metrics);
-                    yield { chunk: text, metrics };
-                }
-            }
-        } else {
-            throw new Error(`Streaming not supported for provider: ${config.provider}`);
-        }
-
-        metrics.endTime = Date.now();
-        onMetrics?.(metrics);
-    } catch (error: any) {
-        console.error(`Stream error for ${config.provider}:`, error);
-        let errorMessage = "An error occurred while streaming the response. ";
-
-        if (error.status === 401) {
-            errorMessage += "Invalid API key. Please check your credentials.";
-        } else if (error.message) {
-            errorMessage += error.message;
-        }
-
-        yield {
-            chunk: `Error: ${errorMessage}`,
-            metrics: {
-                startTime: Date.now(),
-                endTime: Date.now(),
-                tokenCount: 0,
-                estimatedCost: 0
-            }
-        };
-    }
-}
-
-export async function compareModels(
-    prompt: string,
-    testCase: string,
-    configs: ModelConfig[],
-    onProgress: (modelIndex: number, chunk: string, metrics: StreamMetrics) => void
-): Promise<void> {
-    const streams = configs.map((config, index) => {
-        const stream = streamResponse(prompt, testCase, config, (metrics) => {
-            onProgress(index, "", metrics);
-        });
-        return { stream, index };
-    });
-
-    await Promise.all(
-        streams.map(async ({ stream, index }) => {
-            try {
-                for await (const { chunk, metrics } of stream) {
-                    onProgress(index, chunk, metrics);
-                }
-            } catch (error: any) {
-                console.error(`Error in model comparison for index ${index}:`, error);
-                onProgress(index, `Error: ${error.message}`, {
-                    startTime: Date.now(),
-                    tokenCount: 0,
-                    estimatedCost: 0
-                });
-            }
-        })
-    );
-}
+const DEFAULT_MODEL_CONFIG = {
+  provider: "openai" as const,
+  model: "gpt-4o",
+  temperature: 0.7,
+  maxTokens: 4096,
+  systemPrompt: "You are a professional AI prompt engineer, skilled at creating detailed and effective prompts."
+};
 
 // the newest OpenAI model is "gpt-4o" which was released May 13, 2024. do not change this unless explicitly requested by the user
 export async function generateMetaPrompt(
-    input: MetaPromptInput,
-    config: ModelConfig
+  input: MetaPromptInput,
+  apiKey: string
 ): Promise<string> {
-    const prompt = `Given this request for an AI assistant: "${input.baseInput}"
+  const openai = new OpenAI({ 
+    apiKey,
+    dangerouslyAllowBrowser: true
+  });
+
+  const prompt = `Given this request for an AI assistant: "${input.baseInput}"
 
 Create a comprehensive meta-prompt that includes:
 1. Extracted AI Role
@@ -255,301 +49,148 @@ Format the response as a detailed prompt with clear sections for:
 - Constraints & Safety
 - Example Responses`;
 
-    try {
-        const client = getClient(config);
-        const messages = formatMessages(prompt, config);
+  const response = await openai.chat.completions.create({
+    model: DEFAULT_MODEL_CONFIG.model,
+    messages: [
+      {
+        role: "system",
+        content: DEFAULT_MODEL_CONFIG.systemPrompt
+      },
+      {
+        role: "user",
+        content: prompt
+      }
+    ],
+    temperature: DEFAULT_MODEL_CONFIG.temperature,
+    max_tokens: DEFAULT_MODEL_CONFIG.maxTokens
+  });
 
-        if (config.provider === "anthropic") {
-            const response = await (client as Anthropic).messages.create({
-                model: config.model,
-                max_tokens: config.maxTokens,
-                temperature: config.temperature,
-                messages: messages.map(msg => ({
-                    role: msg.role === "system" ? "assistant" : msg.role,
-                    content: msg.content
-                }))
-            });
-            return response.content[0].text || "";
-        } else {
-            const response = await (client as OpenAI).chat.completions.create({
-                model: config.model,
-                messages,
-                temperature: config.temperature,
-                max_tokens: config.maxTokens
-            });
-            return response.choices[0].message.content || "";
-        }
-    } catch (error) {
-        handleApiError(error);
-        return "";
-    }
+  return response.choices[0].message.content || "";
 }
 
 export async function generateVariations(
-    metaPrompt: string,
-    count: number = 3,
-    config: ModelConfig
+  metaPrompt: string,
+  apiKey: string,
+  count: number = 3
 ): Promise<string[]> {
-    const prompt = `Generate exactly ${count} detailed variations of the following meta prompt:
+  const openai = new OpenAI({ 
+    apiKey,
+    dangerouslyAllowBrowser: true
+  });
+
+  const prompt = `Generate exactly ${count} detailed variations of the following meta prompt:
 
 ${metaPrompt}
 
 For each variation:
 1. Maintain the core functionality but vary the emphasis and approach
-2. Include clear sections for:
-   - Role and Persona
-   - Communication Style
-   - Task Handling Guidelines
-   - Response Format
-   - Constraints and Safety Measures
-3. Each variation should be comprehensive and self-contained
+2. Each variation should be unique and well-structured
+3. Keep the essential constraints while exploring different angles
 4. Aim for at least 250 words per variation
 
-Return ONLY a JSON object with this exact structure, containing exactly ${count} variations:
-{
-  "variations": [
-    "First complete variation text here",
-    "Second complete variation text here",
+Return ONLY a JSON array containing exactly ${count} variations.`;
 
-  ]
-}
-Important: The response must contain exactly ${count} variations, no more and no less.`;
-
-    const client = getClient(config);
-    try {
-        let content: string;
-
-        if (config.provider === "anthropic") {
-            const response = await (client as Anthropic).messages.create({
-                model: config.model,
-                max_tokens: Math.max(config.maxTokens, 4096),
-                temperature: config.temperature,
-                messages: formatMessages(prompt, config).map(msg => ({
-                    role: msg.role === "system" ? "assistant" : msg.role,
-                    content: msg.content
-                }))
-            });
-            content = response.content[0].text || "";
-        } else {
-            const response = await (client as OpenAI).chat.completions.create({
-                model: config.model,
-                messages: formatMessages(prompt, config),
-                temperature: config.temperature,
-                max_tokens: Math.max(config.maxTokens, 4096),
-                response_format: { type: "json_object" }
-            });
-            content = response.choices[0].message.content || "";
-        }
-
-        try {
-            const result = JSON.parse(content);
-            if (!Array.isArray(result.variations)) {
-                console.error("Invalid response format - variations is not an array");
-                return [];
-            }
-
-            if (result.variations.length !== count) {
-                console.warn(`Expected ${count} variations but received ${result.variations.length}`);
-            }
-
-            return result.variations
-                .slice(0, count)
-                .map((v: any) => typeof v === 'string' ? v : JSON.stringify(v));
-        } catch (error) {
-            console.error("JSON Parse Error:", error);
-            return [];
-        }
-    } catch (error) {
-        console.error("API Error:", error);
-        throw error;
-    }
-}
-
-export async function evaluatePrompt(
-    prompt: string,
-    testCase: string,
-    criteria: Record<string, number>,
-    config: ModelConfig
-): Promise<Record<string, number>> {
-    const evaluationPrompt = `You are an objective evaluator. Analyze the following response against a test case and provide numerical scores.
-
-Input Test Case: "${testCase}"
-
-Response to Evaluate: "${prompt}"
-
-Rate ONLY the following criteria, with scores from 0 to 1 (where 0 is poor and 1 is excellent).
-Required criteria: ${Object.keys(criteria).join(", ")}
-
-Return ONLY a JSON object with exactly these scores, no other text. Example format:
-{
-  "criterionName": 0.85,
-  "anotherCriterion": 0.92
-}`;
-
-    const client = getClient(config);
-    try {
-        let content: string;
-
-        if (config.provider === "anthropic") {
-            const response = await (client as Anthropic).messages.create({
-                model: config.model,
-                max_tokens: config.maxTokens,
-                temperature: config.temperature,
-                messages: formatMessages(evaluationPrompt, config).map(msg => ({
-                    role: msg.role === "system" ? "assistant" : msg.role,
-                    content: msg.content
-                }))
-            });
-            content = response.content[0].text || "";
-        } else {
-            const response = await (client as OpenAI).chat.completions.create({
-                model: config.model,
-                messages: formatMessages(evaluationPrompt, config),
-                temperature: config.temperature,
-                max_tokens: config.maxTokens,
-                response_format: { type: "json_object" }
-            });
-            content = response.choices[0].message.content || "";
-        }
-
-        try {
-            const result = JSON.parse(content.trim());
-            const validatedScores: Record<string, number> = {};
-            Object.keys(criteria).forEach(key => {
-                const score = result[key];
-                if (typeof score !== 'number' || score < 0 || score > 1) {
-                    validatedScores[key] = 0.5;
-                } else {
-                    validatedScores[key] = score;
-                }
-            });
-            return validatedScores;
-        } catch (parseError) {
-            console.error("Failed to parse evaluation response:", parseError);
-            console.error("Raw content:", content);
-            return Object.keys(criteria).reduce((acc, key) => ({ ...acc, [key]: 0.5 }), {});
-        }
-    } catch (error) {
-        handleApiError(error);
-        return Object.keys(criteria).reduce((acc, key) => ({ ...acc, [key]: 0 }), {});
-    }
-}
-
-export async function generateTestCases(
-    baseInput: string,
-    metaPrompt: string,
-    variations: string[],
-    config: ModelConfig
-): Promise<{
-    input: string;
-    criteria: Record<string, number>;
-}[]> {
-    const prompt = `Given this context:
-Base Input: "${baseInput}"
-Meta Prompt: "${metaPrompt}"
-Generated Variations:
-${variations.map((v, i) => `${i + 1}. ${v}`).join('\n')}
-
-Generate a set of test cases that will effectively evaluate these prompt variations.
-For each test case:
-1. Create a challenging input scenario
-2. Define evaluation criteria with weights (0-1) based on what's important for this specific use case
-
-Return ONLY a JSON object with this structure:
-{
-  "testCases": [
-    {
-      "input": "test scenario here",
-      "criteria": {
-        "criterionName": 0.8,
-        "anotherCriterion": 0.6
+  const response = await openai.chat.completions.create({
+    model: DEFAULT_MODEL_CONFIG.model,
+    messages: [
+      {
+        role: "system",
+        content: DEFAULT_MODEL_CONFIG.systemPrompt
+      },
+      {
+        role: "user",
+        content: prompt
       }
-    }
-  ]
-}`;
+    ],
+    temperature: DEFAULT_MODEL_CONFIG.temperature,
+    max_tokens: DEFAULT_MODEL_CONFIG.maxTokens,
+    response_format: { type: "json_object" }
+  });
 
-    const client = getClient(config);
-    try {
-        let content: string;
-
-        if (config.provider === "anthropic") {
-            const response = await (client as Anthropic).messages.create({
-                model: config.model,
-                max_tokens: config.maxTokens,
-                temperature: config.temperature,
-                messages: formatMessages(prompt, config).map(msg => ({
-                    role: msg.role === "system" ? "assistant" : msg.role,
-                    content: msg.content
-                }))
-            });
-            content = response.content[0].text || "";
-        } else {
-            const response = await (client as OpenAI).chat.completions.create({
-                model: config.model,
-                messages: formatMessages(prompt, config),
-                temperature: config.temperature,
-                max_tokens: config.maxTokens,
-                response_format: { type: "json_object" }
-            });
-            content = response.choices[0].message.content || "";
-        }
-
-        if (!content) {
-            return [];
-        }
-
-        const result = JSON.parse(content);
-        return result.testCases || [];
-    } catch (error) {
-        console.error("Test Case Generation Error:", error);
-        return [];
-    }
+  try {
+    const content = response.choices[0].message.content || "[]";
+    const result = JSON.parse(content);
+    return Array.isArray(result.variations) ? result.variations : [];
+  } catch (error) {
+    console.error("Failed to parse variations:", error);
+    return [];
+  }
 }
 
-function getModelConfig(provider: Provider, modelId: string): ModelConfigItem | undefined {
-    const providerConfig = MODEL_CONFIGS[provider];
-    if (!providerConfig) return undefined;
-    return providerConfig.models.find(m => m.id === modelId);
+export interface EvaluationScore {
+  criterionId: string;
+  score: number;
+  explanation: string;
 }
 
-export async function generateResponse(
-    prompt: string,
-    testCase: string,
-    config: ModelConfig
-): Promise<string> {
-    const client = getClient(config);
-    try {
-        const modifiedConfig = {
-            ...config,
-            systemPrompt: prompt
-        };
+export async function evaluateVariations(
+  variations: string[],
+  originalRequest: string,
+  apiKey: string
+): Promise<Array<{ variationIndex: number; scores: EvaluationScore[] }>> {
+  const openai = new OpenAI({ 
+    apiKey,
+    dangerouslyAllowBrowser: true
+  });
 
-        if (config.provider === "anthropic") {
-            const response = await (client as Anthropic).messages.create({
-                model: config.model,
-                max_tokens: config.maxTokens,
-                temperature: config.temperature,
-                messages: formatMessages(testCase, modifiedConfig).map(msg => ({
-                    role: msg.role === "system" ? "assistant" : msg.role,
-                    content: msg.content
-                }))
-            });
-            const content = response.content[0];
-            if (content.type === 'text') {
-                return content.text;
-            }
-            return '';
-        } else {
-            const response = await (client as OpenAI).chat.completions.create({
-                model: config.model,
-                messages: formatMessages(testCase, modifiedConfig),
-                temperature: config.temperature,
-                max_tokens: config.maxTokens
-            });
-            return response.choices[0].message.content || "";
+  const results = [];
+
+  for (let i = 0; i < variations.length; i++) {
+    const prompt = `Evaluate the following prompt variation against the original request.
+
+Original Request: "${originalRequest}"
+
+Prompt Variation:
+${variations[i]}
+
+Evaluate this variation using the following criteria:
+${DEFAULT_EVALUATION_CRITERIA.map(c => `- ${c.name}: ${c.description}`).join('\n')}
+
+Return a JSON array of scores, one for each criterion, in this format:
+[
+  {
+    "criterionId": "criterion-id",
+    "score": 0.0-1.0,
+    "explanation": "Brief explanation of the score"
+  }
+]`;
+
+    const response = await openai.chat.completions.create({
+      model: DEFAULT_MODEL_CONFIG.model,
+      messages: [
+        {
+          role: "system",
+          content: "You are an objective evaluator of AI prompts. Provide detailed, fair assessments."
+        },
+        {
+          role: "user",
+          content: prompt
         }
+      ],
+      temperature: 0.3,
+      max_tokens: 1000,
+      response_format: { type: "json_object" }
+    });
+
+    try {
+      const content = response.choices[0].message.content || "[]";
+      const scores = JSON.parse(content);
+      results.push({
+        variationIndex: i,
+        scores: scores.evaluations || []
+      });
     } catch (error) {
-        handleApiError(error);
-        return "";
+      console.error(`Failed to evaluate variation ${i}:`, error);
+      results.push({
+        variationIndex: i,
+        scores: DEFAULT_EVALUATION_CRITERIA.map(c => ({
+          criterionId: c.id,
+          score: 0,
+          explanation: "Evaluation failed"
+        }))
+      });
     }
+  }
+
+  return results;
 }
