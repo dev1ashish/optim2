@@ -6,6 +6,7 @@ import ReactFlow, {
   NodeProps,
   Handle,
   Position,
+  Panel,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import { MetaPromptForm } from '../meta-prompt-form';
@@ -66,47 +67,78 @@ interface FlowCanvasProps {
   setUseDefaultForEvaluation: (use: boolean) => void;
 }
 
-// Custom nodes for each section
-function MetaPromptNode({ data }: NodeProps) {
+// Custom nodes with improved styling
+function MetaPromptNode({ data, dragging }: NodeProps) {
   return (
-    <Card className="p-4 min-w-[400px]">
-      <Handle type="target" position={Position.Left} />
+    <Card className={cn(
+      "p-6 min-w-[400px] transition-all duration-200 shadow-lg",
+      "border-2 hover:border-primary",
+      dragging ? "opacity-70" : "opacity-100"
+    )}>
+      <Handle type="target" position={Position.Left} className="!bg-primary" />
+      <div className="mb-4">
+        <h3 className="text-lg font-semibold text-primary">Meta Prompt Generation</h3>
+        <p className="text-sm text-muted-foreground">Define your AI assistant's purpose</p>
+      </div>
       <MetaPromptForm {...data} />
-      <Handle type="source" position={Position.Right} />
+      <Handle type="source" position={Position.Right} className="!bg-primary" />
     </Card>
   );
 }
 
-function VariationNode({ data }: NodeProps) {
+function VariationNode({ data, dragging }: NodeProps) {
   return (
-    <Card className="p-4 min-w-[400px]">
-      <Handle type="target" position={Position.Left} />
+    <Card className={cn(
+      "p-6 min-w-[400px] transition-all duration-200 shadow-lg",
+      "border-2 hover:border-primary",
+      dragging ? "opacity-70" : "opacity-100"
+    )}>
+      <Handle type="target" position={Position.Left} className="!bg-primary" />
+      <div className="mb-4">
+        <h3 className="text-lg font-semibold text-primary">Prompt Variations</h3>
+        <p className="text-sm text-muted-foreground">Generate and refine variations</p>
+      </div>
       <VariationGenerator {...data} />
-      <Handle type="source" position={Position.Right} />
+      <Handle type="source" position={Position.Right} className="!bg-primary" />
     </Card>
   );
 }
 
-function TestCaseNode({ data }: NodeProps) {
+function TestCaseNode({ data, dragging }: NodeProps) {
   return (
-    <Card className="p-4 min-w-[400px]">
-      <Handle type="target" position={Position.Left} />
+    <Card className={cn(
+      "p-6 min-w-[400px] transition-all duration-200 shadow-lg",
+      "border-2 hover:border-primary",
+      dragging ? "opacity-70" : "opacity-100"
+    )}>
+      <Handle type="target" position={Position.Left} className="!bg-primary" />
+      <div className="mb-4">
+        <h3 className="text-lg font-semibold text-primary">Test Cases</h3>
+        <p className="text-sm text-muted-foreground">Create and manage test scenarios</p>
+      </div>
       <TestCreator {...data} />
-      <Handle type="source" position={Position.Right} />
+      <Handle type="source" position={Position.Right} className="!bg-primary" />
     </Card>
   );
 }
 
-function ComparisonNode({ data }: NodeProps) {
+function ComparisonNode({ data, dragging }: NodeProps) {
   return (
-    <Card className="p-4 min-w-[400px]">
-      <Handle type="target" position={Position.Left} />
+    <Card className={cn(
+      "p-6 min-w-[400px] transition-all duration-200 shadow-lg",
+      "border-2 hover:border-primary",
+      dragging ? "opacity-70" : "opacity-100"
+    )}>
+      <Handle type="target" position={Position.Left} className="!bg-primary" />
+      <div className="mb-4">
+        <h3 className="text-lg font-semibold text-primary">Evaluation Dashboard</h3>
+        <p className="text-sm text-muted-foreground">Compare and analyze results</p>
+      </div>
       <ComparisonDashboard {...data} />
     </Card>
   );
 }
 
-// Node types mapping
 const nodeTypes = {
   metaPrompt: MetaPromptNode,
   variation: VariationNode,
@@ -115,12 +147,13 @@ const nodeTypes = {
 };
 
 export function FlowCanvas(props: FlowCanvasProps) {
-  // Define nodes for the flow
+  // Define nodes with better spacing
   const nodes: Node[] = [
     {
       id: '1',
       type: 'metaPrompt',
-      position: { x: 0, y: 0 },
+      position: { x: 50, y: 50 },
+      draggable: true,
       data: {
         onSubmit: props.metaPromptMutation.mutateAsync,
         modelConfig: props.metaPromptConfig,
@@ -135,7 +168,8 @@ export function FlowCanvas(props: FlowCanvasProps) {
     {
       id: '2',
       type: 'variation',
-      position: { x: 400, y: 0 },
+      position: { x: 600, y: 50 },
+      draggable: true,
       data: {
         metaPrompt: props.metaPrompt,
         onGenerate: props.variationMutation.mutateAsync,
@@ -155,7 +189,8 @@ export function FlowCanvas(props: FlowCanvasProps) {
     {
       id: '3',
       type: 'testCase',
-      position: { x: 800, y: 0 },
+      position: { x: 1150, y: 50 },
+      draggable: true,
       data: {
         onAddTest: (test: TestCase) => {
           props.setTestCases([...props.testCases, test]);
@@ -186,7 +221,8 @@ export function FlowCanvas(props: FlowCanvasProps) {
     {
       id: '4',
       type: 'comparison',
-      position: { x: 1200, y: 0 },
+      position: { x: 1700, y: 50 },
+      draggable: true,
       data: {
         variations: props.variations,
         testCases: props.testCases,
@@ -208,11 +244,32 @@ export function FlowCanvas(props: FlowCanvasProps) {
     },
   ];
 
-  // Define edges connecting the nodes
+  // Enhanced edges with better styling
   const edges: Edge[] = [
-    { id: 'e1-2', source: '1', target: '2', animated: props.currentStep >= 2 },
-    { id: 'e2-3', source: '2', target: '3', animated: props.currentStep >= 3 },
-    { id: 'e3-4', source: '3', target: '4', animated: props.currentStep >= 4 },
+    { 
+      id: 'e1-2', 
+      source: '1', 
+      target: '2', 
+      animated: props.currentStep >= 2,
+      style: { stroke: 'hsl(var(--primary))', strokeWidth: 2 },
+      className: "transition-opacity duration-300"
+    },
+    { 
+      id: 'e2-3', 
+      source: '2', 
+      target: '3', 
+      animated: props.currentStep >= 3,
+      style: { stroke: 'hsl(var(--primary))', strokeWidth: 2 },
+      className: "transition-opacity duration-300"
+    },
+    { 
+      id: 'e3-4', 
+      source: '3', 
+      target: '4', 
+      animated: props.currentStep >= 4,
+      style: { stroke: 'hsl(var(--primary))', strokeWidth: 2 },
+      className: "transition-opacity duration-300"
+    },
   ];
 
   return (
@@ -223,9 +280,16 @@ export function FlowCanvas(props: FlowCanvasProps) {
         nodeTypes={nodeTypes}
         fitView
         className="bg-background"
+        minZoom={0.5}
+        maxZoom={1.5}
+        defaultViewport={{ x: 0, y: 0, zoom: 0.8 }}
       >
-        <Background />
-        <Controls />
+        <Background color="hsl(var(--muted-foreground))" variant="dots" />
+        <Controls className="bg-background border-primary" />
+        <Panel position="top-left" className="bg-background/80 p-4 rounded-lg backdrop-blur">
+          <h2 className="text-lg font-semibold mb-2">Prompt Optimization Flow</h2>
+          <p className="text-sm text-muted-foreground">Step {props.currentStep} of 4</p>
+        </Panel>
       </ReactFlow>
     </div>
   );
