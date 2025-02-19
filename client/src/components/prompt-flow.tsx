@@ -54,7 +54,7 @@ const InputNode = memo(({ data }: InputNodeProps) => (
           value={data.value}
           onChange={(e) => data.onChange(e.target.value)}
           placeholder="What kind of AI assistant do you want?"
-          className="min-h-[100px]"
+          className="min-h-[100px] resize-y"
         />
         <Button 
           onClick={data.onGenerate}
@@ -202,7 +202,8 @@ export function PromptFlow({ input, onInputChange, onGenerate, isGenerating, res
         onGenerate,
         isGenerating
       },
-      draggable: true
+      draggable: true,
+      style: { zIndex: 1 }
     },
     ...(result ? [
       {
@@ -210,21 +211,24 @@ export function PromptFlow({ input, onInputChange, onGenerate, isGenerating, res
         type: 'metaPrompt',
         position: { x: 400, y: 300 },
         data: { content: result.metaPrompt },
-        draggable: true
+        draggable: true,
+        style: { zIndex: 1 }
       },
       {
         id: '3',
         type: 'variations',
         position: { x: 200, y: 600 },
         data: { variations: result.variations },
-        draggable: true
+        draggable: true,
+        style: { zIndex: 1 }
       },
       {
         id: '4',
         type: 'leaderboard',
         position: { x: 200, y: 1000 },
         data: { evaluations: result.evaluations },
-        draggable: true
+        draggable: true,
+        style: { zIndex: 1 }
       }
     ] : [])
   ];
@@ -263,6 +267,8 @@ export function PromptFlow({ input, onInputChange, onGenerate, isGenerating, res
         minZoom={0.2}
         maxZoom={1.5}
         fitView={false}
+        style={{ background: 'var(--background)' }}
+        proOptions={{ hideAttribution: true }}
       >
         <Background />
         <Controls />
