@@ -155,7 +155,10 @@ export function FlowCanvas(props: FlowCanvasProps) {
       position: { x: 50, y: 50 },
       draggable: true,
       data: {
-        onSubmit: props.metaPromptMutation.mutateAsync,
+        onSubmit: async (data: MetaPromptInput) => {
+          await props.metaPromptMutation.mutateAsync(data);
+          props.onStepComplete(1);
+        },
         modelConfig: props.metaPromptConfig,
         onModelConfigChange: props.setMetaPromptConfig,
         isLoading: props.metaPromptMutation.isPending
@@ -172,7 +175,10 @@ export function FlowCanvas(props: FlowCanvasProps) {
       draggable: true,
       data: {
         metaPrompt: props.metaPrompt,
-        onGenerate: props.variationMutation.mutateAsync,
+        onGenerate: async (count: number) => {
+          await props.variationMutation.mutateAsync(count);
+          props.onStepComplete(2);
+        },
         variations: props.variations,
         isLoading: props.variationMutation.isPending,
         modelConfig: props.useDefaultForVariation ? props.metaPromptConfig : props.variationConfig,
@@ -196,7 +202,10 @@ export function FlowCanvas(props: FlowCanvasProps) {
           props.setTestCases([...props.testCases, test]);
           props.onStepComplete(3);
         },
-        onGenerateTests: props.testGenerationMutation.mutateAsync,
+        onGenerateTests: async () => {
+          await props.testGenerationMutation.mutateAsync();
+          props.onStepComplete(3);
+        },
         testCases: props.testCases,
         onRemoveTest: (index: number) => {
           props.setTestCases(props.testCases.filter((_, i) => i !== index));
@@ -227,7 +236,10 @@ export function FlowCanvas(props: FlowCanvasProps) {
         variations: props.variations,
         testCases: props.testCases,
         evaluationResults: props.evaluationResults,
-        onEvaluate: props.evaluationMutation.mutateAsync,
+        onEvaluate: async (criteria: any) => {
+          await props.evaluationMutation.mutateAsync(criteria);
+          props.onStepComplete(4);
+        },
         isEvaluating: props.evaluationMutation.isPending,
         modelConfig: props.useDefaultForEvaluation ? props.metaPromptConfig : props.evaluationConfig,
         onModelConfigChange: props.setEvaluationConfig,
