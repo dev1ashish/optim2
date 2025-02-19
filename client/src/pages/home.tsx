@@ -15,6 +15,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { AlertCircle, Loader2 } from "lucide-react";
 
 interface ProcessResult {
   metaPrompt: string;
@@ -39,34 +40,43 @@ export default function Home() {
         throw new Error("OpenAI API key is required");
       }
 
-      // Generate meta prompt
-      const metaPrompt = await generateMetaPrompt(input, globalSettings.openaiKey);
-      if (!metaPrompt) throw new Error("Failed to generate meta prompt");
+      try {
+        // Step 1: Generate meta prompt
+        const metaPrompt = await generateMetaPrompt(input, globalSettings.openaiKey);
+        if (!metaPrompt) throw new Error("Failed to generate meta prompt");
 
-      // Generate variations
-      const variations = await generateVariations(metaPrompt, globalSettings.openaiKey);
-      if (!variations.length) throw new Error("Failed to generate variations");
+        // Step 2: Generate variations
+        const variations = await generateVariations(metaPrompt, globalSettings.openaiKey);
+        if (!variations.length) throw new Error("Failed to generate variations");
 
-      // Evaluate variations
-      const evaluations = await evaluateVariations(
-        variations,
-        input.baseInput,
-        globalSettings.openaiKey
-      );
+        // Step 3: Evaluate variations
+        const evaluations = await evaluateVariations(
+          variations,
+          input.baseInput,
+          globalSettings.openaiKey
+        );
 
-      return {
-        metaPrompt,
-        variations,
-        evaluations
-      };
+        return {
+          metaPrompt,
+          variations,
+          evaluations
+        };
+      } catch (error) {
+        console.error("Generation error:", error);
+        throw error;
+      }
     },
     onSuccess: (data) => {
       setResult(data);
+      toast({
+        title: "Success!",
+        description: "Generated meta prompt, variations, and evaluations.",
+      });
     },
     onError: (error) => {
       toast({
         title: "Error",
-        description: error instanceof Error ? error.message : "An error occurred",
+        description: error instanceof Error ? error.message : "Failed to process the request",
         variant: "destructive"
       });
     }
@@ -101,12 +111,37 @@ export default function Home() {
               disabled={generateMutation.isPending || !baseInput.trim()}
               className="w-full"
             >
-              {generateMutation.isPending ? "Generating..." : "Generate"}
+              {generateMutation.isPending ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Generating...
+                </>
+              ) : (
+                "Generate"
+              )}
             </Button>
           </div>
         </Card>
 
         {/* Results Section */}
+        {generateMutation.isPending && (
+          <Card className="p-6">
+            <div className="flex items-center justify-center space-x-2">
+              <Loader2 className="h-6 w-6 animate-spin" />
+              <p>Generating prompt variations and evaluations...</p>
+            </div>
+          </Card>
+        )}
+
+        {generateMutation.isError && (
+          <Card className="p-6 border-red-500">
+            <div className="flex items-center space-x-2 text-red-500">
+              <AlertCircle className="h-6 w-6" />
+              <p>{generateMutation.error instanceof Error ? generateMutation.error.message : "An error occurred"}</p>
+            </div>
+          </Card>
+        )}
+
         {result && (
           <div className="space-y-8">
             {/* Meta Prompt */}

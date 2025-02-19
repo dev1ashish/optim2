@@ -61,7 +61,7 @@ Format the response as a detailed prompt with clear sections for:
         content: prompt
       }
     ],
-    temperature: DEFAULT_MODEL_CONFIG.temperature,
+    temperature: 0.3, // Lower temperature for more consistent outputs
     max_tokens: DEFAULT_MODEL_CONFIG.maxTokens
   });
 
@@ -78,42 +78,46 @@ export async function generateVariations(
     dangerouslyAllowBrowser: true
   });
 
-  const prompt = `Generate exactly ${count} detailed variations of the following meta prompt:
+  const prompt = `You will generate exactly ${count} variations of the following prompt. Return ONLY a JSON response in the exact format: {"variations": ["variation1", "variation2", "variation3"]}
 
+Original Meta Prompt:
 ${metaPrompt}
 
-For each variation:
+Guidelines for each variation:
 1. Maintain the core functionality but vary the emphasis and approach
 2. Each variation should be unique and well-structured
 3. Keep the essential constraints while exploring different angles
 4. Aim for at least 250 words per variation
 
-Return ONLY a JSON array containing exactly ${count} variations.`;
+Remember: Return only a JSON object with a "variations" array containing exactly ${count} strings.`;
 
   const response = await openai.chat.completions.create({
     model: DEFAULT_MODEL_CONFIG.model,
     messages: [
       {
         role: "system",
-        content: DEFAULT_MODEL_CONFIG.systemPrompt
+        content: "You are a JSON-focused prompt engineer. Always respond with valid JSON objects containing a 'variations' array."
       },
       {
         role: "user",
         content: prompt
       }
     ],
-    temperature: DEFAULT_MODEL_CONFIG.temperature,
+    temperature: 0.3, // Lower temperature for consistent JSON
     max_tokens: DEFAULT_MODEL_CONFIG.maxTokens,
     response_format: { type: "json_object" }
   });
 
   try {
-    const content = response.choices[0].message.content || "[]";
+    const content = response.choices[0].message.content || "{}";
     const result = JSON.parse(content);
-    return Array.isArray(result.variations) ? result.variations : [];
+    if (!Array.isArray(result.variations) || result.variations.length !== count) {
+      throw new Error("Invalid response format");
+    }
+    return result.variations;
   } catch (error) {
     console.error("Failed to parse variations:", error);
-    return [];
+    throw new Error("Failed to generate variations");
   }
 }
 
@@ -146,21 +150,23 @@ ${variations[i]}
 Evaluate this variation using the following criteria:
 ${DEFAULT_EVALUATION_CRITERIA.map(c => `- ${c.name}: ${c.description}`).join('\n')}
 
-Return a JSON array of scores, one for each criterion, in this format:
-[
-  {
-    "criterionId": "criterion-id",
-    "score": 0.0-1.0,
-    "explanation": "Brief explanation of the score"
-  }
-]`;
+Return a JSON object in this exact format:
+{
+  "evaluations": [
+    {
+      "criterionId": "criterion-id",
+      "score": 0.0-1.0,
+      "explanation": "Brief explanation of the score"
+    }
+  ]
+}`;
 
     const response = await openai.chat.completions.create({
       model: DEFAULT_MODEL_CONFIG.model,
       messages: [
         {
           role: "system",
-          content: "You are an objective evaluator of AI prompts. Provide detailed, fair assessments."
+          content: "You are an objective evaluator. Always respond with valid JSON containing an 'evaluations' array."
         },
         {
           role: "user",
@@ -173,11 +179,14 @@ Return a JSON array of scores, one for each criterion, in this format:
     });
 
     try {
-      const content = response.choices[0].message.content || "[]";
-      const scores = JSON.parse(content);
+      const content = response.choices[0].message.content || "{}";
+      const result = JSON.parse(content);
+      if (!Array.isArray(result.evaluations)) {
+        throw new Error("Invalid evaluation format");
+      }
       results.push({
         variationIndex: i,
-        scores: scores.evaluations || []
+        scores: result.evaluations
       });
     } catch (error) {
       console.error(`Failed to evaluate variation ${i}:`, error);
