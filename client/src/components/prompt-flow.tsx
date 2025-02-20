@@ -53,12 +53,12 @@ const InputNode = memo(({ data }: InputNodeProps) => (
   <div className="w-[400px]">
     <Handle type="source" position={Position.Bottom} />
     <Card className="p-4">
-      <Label className="text-lg mb-2 block">Meta Prompt Generation</Label>
+      <Label className="text-lg mb-2 block">What do you wana build today?</Label>
       <div className="space-y-4">
         <Textarea
           value={data.value}
           onChange={(e) => data.onChange(e.target.value)}
-          placeholder="What kind of AI assistant do you want?"
+          placeholder="eg: i want an empathetic chatbot"
           className="min-h-[100px]"
         />
         <Button 

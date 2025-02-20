@@ -28,7 +28,7 @@ export function MetaPromptForm({ onSubmit, isLoading }: MetaPromptFormProps) {
 
   return (
     <div className="space-y-4">
-      <Label className="text-base">What kind of AI assistant do you want?</Label>
+      <Label className="text-base">eg: i want an empathetic chatbot</Label>
       <Form {...form}>
         <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
           <FormField
