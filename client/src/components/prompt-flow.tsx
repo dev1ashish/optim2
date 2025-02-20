@@ -4,7 +4,14 @@ import ReactFlow, {
   Background,
   Controls,
   MarkerType,
-  useReactFlow
+  useReactFlow,
+  Node,
+  Edge,
+  NodeChange,
+  EdgeChange,
+  Connection,
+  applyNodeChanges,
+  applyEdgeChanges,
 } from 'reactflow';
 import { Card } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
@@ -21,7 +28,7 @@ import {
 } from "@/components/ui/table";
 import { Loader2 } from "lucide-react";
 import type { EvaluationScore } from "@/lib/openai";
-import { memo } from 'react';
+import { memo, useCallback, useState, useEffect } from 'react';
 
 interface ProcessResult {
   metaPrompt: string;
@@ -181,63 +188,109 @@ interface PromptFlowProps {
 }
 
 export function PromptFlow({ input, onInputChange, onGenerate, isGenerating, result }: PromptFlowProps) {
-  const nodes = [
-    {
-      id: '1',
-      type: 'input',
-      position: { x: 400, y: 0 },
-      data: { 
-        value: input,
-        onChange: onInputChange,
-        onGenerate,
-        isGenerating
+  // Initialize nodes with state
+  const [nodes, setNodes] = useState<Node[]>([]);
+  const [edges, setEdges] = useState<Edge[]>([]);
+  
+  // Update nodes and edges when result changes
+  useEffect(() => {
+    const newNodes = [
+      {
+        id: '1',
+        type: 'input',
+        position: { x: 400, y: 50 },
+        data: { 
+          value: input,
+          onChange: onInputChange,
+          onGenerate,
+          isGenerating
+        },
+        draggable: true
       }
-    },
-    ...(result ? [
-      {
-        id: '2',
-        type: 'metaPrompt',
-        position: { x: 400, y: 200 },
-        data: { content: result.metaPrompt }
-      },
-      {
-        id: '3',
-        type: 'variations',
-        position: { x: 200, y: 400 },
-        data: { variations: result.variations }
-      },
-      {
-        id: '4',
-        type: 'leaderboard',
-        position: { x: 300, y: 700 },
-        data: { evaluations: result.evaluations }
-      }
-    ] : [])
-  ];
+    ];
 
-  const edges = result ? [
-    {
-      id: 'e1-2',
-      source: '1',
-      target: '2',
-      markerEnd: { type: MarkerType.ArrowClosed },
-      style: { stroke: '#999' }
-    },
-    {
-      id: 'e2-3',
-      source: '2',
-      target: '3',
-      markerEnd: { type: MarkerType.ArrowClosed },
-      style: { stroke: '#999' }
-    },
-    {
-      id: 'e3-4',
-      source: '3',
-      target: '4',
-      markerEnd: { type: MarkerType.ArrowClosed },
-      style: { stroke: '#999' }
+    const newEdges: Edge[] = [];
+
+    if (result) {
+      newNodes.push(
+        {
+          id: '2',
+          type: 'metaPrompt',
+          position: { x: 400, y: 250 },
+          data: { content: result.metaPrompt },
+          draggable: true
+        },
+        {
+          id: '3',
+          type: 'variations',
+          position: { x: 400, y: 500 },
+          data: { variations: result.variations },
+          draggable: true
+        },
+        {
+          id: '4',
+          type: 'leaderboard',
+          position: { x: 400, y: 800 },
+          data: { evaluations: result.evaluations },
+          draggable: true
+        }
+      );
+
+      newEdges.push(
+        {
+          id: 'e1-2',
+          source: '1',
+          target: '2',
+          markerEnd: { type: MarkerType.ArrowClosed },
+          style: { stroke: '#999' }
+        },
+        {
+          id: 'e2-3',
+          source: '2',
+          target: '3',
+          markerEnd: { type: MarkerType.ArrowClosed },
+          style: { stroke: '#999' }
+        },
+        {
+          id: 'e3-4',
+          source: '3',
+          target: '4',
+          markerEnd: { type: MarkerType.ArrowClosed },
+          style: { stroke: '#999' }
+        }
+      );
     }
-  ] : [];
+
+    setNodes(newNodes);
+    setEdges(newEdges);
+  }, [input, onInputChange, onGenerate, isGenerating, result]);
+
+  // Handle node changes (position, selection, etc.)
+  const onNodesChange = useCallback(
+    (changes: NodeChange[]) => setNodes((nds) => applyNodeChanges(changes, nds)),
+    []
+  );
+
+  // Handle edge changes
+  const onEdgesChange = useCallback(
+    (changes: EdgeChange[]) => setEdges((eds) => applyEdgeChanges(changes, eds)),
+    []
+  );
+
+  // Handle new connections
+  const onConnect = useCallback(
+    (connection: Connection) => {
+      setEdges((eds) => [
+        ...eds,
+        {
+          ...connection,
+          markerEnd: { type: MarkerType.ArrowClosed },
+          style: { stroke: '#999' }
+        } as Edge,
+      ]);
+    },
+    []
+  );
 
   return (
     <div className="h-[800px] w-full border rounded-lg">
@@ -245,10 +298,22 @@ export function PromptFlow({ input, onInputChange, onGenerate, isGenerating, res
         nodes={nodes}
         edges={edges}
         nodeTypes={nodeTypes}
+        onNodesChange={onNodesChange}
+        onEdgesChange={onEdgesChange}
+        onConnect={onConnect}
         fitView
+        snapToGrid
+        snapGrid={[20, 20]}
+        defaultViewport={{ x: 0, y: 0, zoom: 1 }}
+        minZoom={0.1}
+        maxZoom={4}
+        className="bg-background"
       >
-        <Background />
-        <Controls />
+        <Background gap={20} size={1} />
+        <Controls 
+          showInteractive={true}
+          className="bg-background border-primary"
+        />
       </ReactFlow>
     </div>
   );
